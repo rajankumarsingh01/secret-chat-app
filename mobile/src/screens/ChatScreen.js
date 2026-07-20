@@ -1,3 +1,4 @@
+// mobile/src/screens/ChatScreen.js
 import React, { useState, useEffect, useRef } from "react";
 import {
   View,
@@ -414,9 +415,10 @@ const ChatScreen = ({ route, navigation }) => {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.replace("Calculator")} style={styles.backBtn}>
-          <Text style={styles.backText}>🔒</Text>
+          <Text style={styles.backText}>‹</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.headerCenter} onPress={() => navigation.navigate("Profile")} activeOpacity={0.7}>
@@ -427,22 +429,24 @@ const ChatScreen = ({ route, navigation }) => {
               <Text style={styles.avatarInitial}>{initials(otherUser.username)}</Text>
             </View>
           )}
-          <View style={{ marginLeft: 10 }}>
-            <Text style={styles.headerTitle}>{otherUser.username}</Text>
-            <Text style={styles.headerStatus}>
-              {otherUser.isOnline ? "Online" : "Offline"} · 🔒 Encrypted{lockStatus?.locked ? " · Locked" : ""}
+          <View style={{ marginLeft: 10, flex: 1 }}>
+            <Text style={styles.headerTitle} numberOfLines={1}>{otherUser.username}</Text>
+            <Text style={styles.headerStatus} numberOfLines={1}>
+              {otherUser.isOnline ? "online" : "offline"}{lockStatus?.locked ? " · 🔒 locked" : ""}
             </Text>
           </View>
         </TouchableOpacity>
 
-        {!initialReadOnly && (
-          <TouchableOpacity onPress={handleLockMenu} style={styles.profileBtn}>
-            <Text style={styles.profileBtnText}>{lockStatus?.locked ? "🔐" : "🔓"}</Text>
+        <View style={styles.headerActions}>
+          {!initialReadOnly && (
+            <TouchableOpacity onPress={handleLockMenu} style={styles.headerIconBtn}>
+              <Text style={styles.headerIconText}>{lockStatus?.locked ? "🔐" : "🔓"}</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity onPress={() => navigation.navigate("Profile")} style={styles.headerIconBtn}>
+            <Text style={styles.headerIconText}>⋮</Text>
           </TouchableOpacity>
-        )}
-        <TouchableOpacity onPress={() => navigation.navigate("Profile")} style={styles.profileBtn}>
-          <Text style={styles.profileBtnText}>⚙</Text>
-        </TouchableOpacity>
+        </View>
       </View>
 
       {renderBanner()}
@@ -452,36 +456,39 @@ const ChatScreen = ({ route, navigation }) => {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={insets.top + 56}
       >
-        {initialLoading ? (
-          <View style={styles.centerLoading}>
-            <ActivityIndicator color={colors.accent} />
-          </View>
-        ) : (
-          <FlatList
-            data={messages}
-            keyExtractor={(item) => item._id}
-            inverted
-            contentContainerStyle={{ paddingVertical: spacing.md }}
-            renderItem={({ item }) => (
-              <MessageBubble
-                message={item}
-                isOwnMessage={item.sender === user._id}
-                onReply={handleReply}
-                onReact={handleReact}
-                onDelete={handleDelete}
-              />
-            )}
-            onEndReached={loadMoreMessages}
-            onEndReachedThreshold={0.3}
-            ListFooterComponent={
-              loadingMore ? (
-                <View style={styles.loadingMore}>
-                  <ActivityIndicator size="small" color={colors.textMuted} />
-                </View>
-              ) : null
-            }
-          />
-        )}
+        {/* Chat wallpaper background */}
+        <View style={styles.wallpaper}>
+          {initialLoading ? (
+            <View style={styles.centerLoading}>
+              <ActivityIndicator color={colors.accent} />
+            </View>
+          ) : (
+            <FlatList
+              data={messages}
+              keyExtractor={(item) => item._id}
+              inverted
+              contentContainerStyle={{ paddingVertical: spacing.md }}
+              renderItem={({ item }) => (
+                <MessageBubble
+                  message={item}
+                  isOwnMessage={item.sender === user._id}
+                  onReply={handleReply}
+                  onReact={handleReact}
+                  onDelete={handleDelete}
+                />
+              )}
+              onEndReached={loadMoreMessages}
+              onEndReachedThreshold={0.3}
+              ListFooterComponent={
+                loadingMore ? (
+                  <View style={styles.loadingMore}>
+                    <ActivityIndicator size="small" color={colors.textMuted} />
+                  </View>
+                ) : null
+              }
+            />
+          )}
+        </View>
 
         {replyingTo && !initialReadOnly ? (
           <View style={styles.replyPreviewBar}>
@@ -506,18 +513,26 @@ const ChatScreen = ({ route, navigation }) => {
           </View>
         ) : (
           <View style={[styles.inputRow, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
-            <TouchableOpacity onPress={pickAndSendImage} style={styles.imageButton} disabled={uploading}>
-              <Text style={styles.imageButtonText}>{uploading ? "…" : "＋"}</Text>
-            </TouchableOpacity>
-            <TextInput
-              style={styles.input}
-              placeholder="Message"
-              placeholderTextColor={colors.textFaint}
-              value={text}
-              onChangeText={setText}
-            />
+            <View style={styles.inputPill}>
+              <TouchableOpacity onPress={pickAndSendImage} disabled={uploading} style={styles.attachBtn}>
+                <Text style={styles.attachBtnText}>{uploading ? "…" : "📎"}</Text>
+              </TouchableOpacity>
+              <TextInput
+                style={styles.input}
+                placeholder="Message"
+                placeholderTextColor={colors.textFaint}
+                value={text}
+                onChangeText={setText}
+                multiline
+              />
+              {!text.trim() && (
+                <TouchableOpacity onPress={pickAndSendImage} disabled={uploading} style={styles.cameraBtn}>
+                  <Text style={styles.attachBtnText}>📷</Text>
+                </TouchableOpacity>
+              )}
+            </View>
             <TouchableOpacity onPress={sendTextMessage} style={styles.sendButton} activeOpacity={0.8}>
-              <Text style={styles.sendButtonText}>↑</Text>
+              <Text style={styles.sendButtonText}>{text.trim() ? "➤" : "🎤"}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -527,32 +542,35 @@ const ChatScreen = ({ route, navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
+  container: { flex: 1, backgroundColor: colors.headerBg },
+  wallpaper: { flex: 1, backgroundColor: colors.bg },
+
   header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: spacing.xs,
     paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    backgroundColor: colors.headerBg,
   },
-  backBtn: { paddingHorizontal: spacing.xs, paddingVertical: spacing.xs },
-  backText: { fontSize: 20 },
+  backBtn: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
+  backText: { fontSize: 30, color: colors.text, fontWeight: "300" },
   headerCenter: { flex: 1, flexDirection: "row", alignItems: "center" },
-  headerAvatar: { width: 36, height: 36, borderRadius: radius.full },
+  headerAvatar: { width: 38, height: 38, borderRadius: radius.full },
   headerAvatarPlaceholder: {
-    width: 36,
-    height: 36,
+    width: 38,
+    height: 38,
     borderRadius: radius.full,
     backgroundColor: colors.accent,
     justifyContent: "center",
     alignItems: "center",
   },
   avatarInitial: { color: "#fff", fontWeight: "700" },
-  headerTitle: { color: colors.text, fontSize: 16, fontWeight: "700" },
-  headerStatus: { color: colors.textMuted, fontSize: 12 },
-  profileBtn: { padding: spacing.xs },
-  profileBtnText: { fontSize: 20 },
+  headerTitle: { color: colors.text, fontSize: 16.5, fontWeight: "600" },
+  headerStatus: { color: colors.textMuted, fontSize: 12.5, marginTop: 1 },
+  headerActions: { flexDirection: "row", alignItems: "center" },
+  headerIconBtn: { padding: spacing.sm },
+  headerIconText: { fontSize: 19, color: colors.text },
+
   banner: { backgroundColor: colors.surfaceAlt, padding: spacing.sm, alignItems: "center" },
   bannerAction: { backgroundColor: colors.surfaceAlt, padding: spacing.sm },
   bannerText: { color: colors.text, fontSize: 12, textAlign: "center" },
@@ -560,8 +578,10 @@ const styles = StyleSheet.create({
   bannerBtnConfirm: { backgroundColor: colors.accent, paddingHorizontal: 16, paddingVertical: 6, borderRadius: radius.sm },
   bannerBtnDecline: { backgroundColor: colors.danger, paddingHorizontal: 16, paddingVertical: 6, borderRadius: radius.sm },
   bannerBtnText: { color: "#fff", fontWeight: "700", fontSize: 12 },
+
   centerLoading: { flex: 1, justifyContent: "center", alignItems: "center" },
   loadingMore: { paddingVertical: spacing.md, alignItems: "center" },
+
   replyPreviewBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -576,43 +596,48 @@ const styles = StyleSheet.create({
   replyPreviewText: { color: colors.textMuted, fontSize: 13 },
   replyCancelBtn: { padding: spacing.xs },
   replyCancelText: { color: colors.textMuted, fontSize: 16 },
+
   inputRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-end",
     paddingHorizontal: spacing.sm,
     paddingTop: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
+    backgroundColor: colors.bg,
   },
-  imageButton: {
-    width: 38,
-    height: 38,
-    borderRadius: radius.full,
-    backgroundColor: colors.surfaceAlt,
-    justifyContent: "center",
+  inputPill: {
+    flex: 1,
+    flexDirection: "row",
     alignItems: "center",
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.lg,
+    paddingLeft: spacing.sm,
+    paddingRight: spacing.xs,
+    marginRight: spacing.sm,
+    minHeight: 44,
   },
-  imageButtonText: { color: colors.accentSoft, fontSize: 20, fontWeight: "600" },
+  attachBtn: { padding: spacing.xs, transform: [{ rotate: "-30deg" }] },
+  cameraBtn: { padding: spacing.xs },
+  attachBtnText: { fontSize: 20 },
   input: {
     flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: radius.full,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-    marginHorizontal: spacing.sm,
     color: colors.text,
-    fontSize: 15,
+    fontSize: 15.5,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 8,
+    maxHeight: 100,
   },
   sendButton: {
-    width: 38,
-    height: 38,
+    width: 44,
+    height: 44,
     borderRadius: radius.full,
     backgroundColor: colors.accent,
     justifyContent: "center",
     alignItems: "center",
+    marginBottom: 0,
   },
-  sendButtonText: { color: "#fff", fontSize: 18, fontWeight: "700" },
-  readOnlyBar: { padding: spacing.md, alignItems: "center", borderTopWidth: 1, borderTopColor: colors.border },
+  sendButtonText: { color: "#fff", fontSize: 18 },
+
+  readOnlyBar: { padding: spacing.md, alignItems: "center", backgroundColor: colors.bg, borderTopWidth: 1, borderTopColor: colors.border },
   readOnlyText: { color: colors.textFaint, fontSize: 13, fontStyle: "italic" },
 });
 
