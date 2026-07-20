@@ -1,3 +1,4 @@
+// backend/controllers/chatController.js
 const Message = require("../models/Message");
 const User = require("../models/User");
 const Conversation = require("../models/Conversation");
@@ -129,7 +130,7 @@ const getConversations = async (req, res) => {
           deletedFor: { $ne: userId },
         })
           .sort({ createdAt: -1 })
-          .select("cipherText nonce imageUrl sender createdAt deletedForEveryone");
+          .select("cipherText nonce imageUrl sender createdAt deletedForEveryone isRead isDelivered");
 
         const unreadCount = await Message.countDocuments({
           sender: partner._id,
