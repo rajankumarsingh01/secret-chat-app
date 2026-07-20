@@ -51,7 +51,7 @@ const ChatListScreen = ({ navigation }) => {
 
   useEffect(() => {
     if (!socket) return;
-    const refresh = () => fetchConversations();
+    const refresh = () => fetchConversations({ silent: true });
     socket.on("receive_message", refresh);
     socket.on("messages_seen", refresh);
     socket.on("lock_state_sync", refresh);
@@ -84,9 +84,8 @@ const ChatListScreen = ({ navigation }) => {
   const previewText = (lastMessage, isOwn) => {
     if (!lastMessage) return "Say hi 👋";
     if (lastMessage.deletedForEveryone) return "🚫 Message deleted";
-    const prefix = isOwn ? "" : "";
-    if (lastMessage.imageUrl) return `${prefix}📷 Photo`;
-    return `${prefix}${lastMessage.text || "🔒 Encrypted message"}`;
+    if (lastMessage.imageUrl) return "📷 Photo";
+    return lastMessage.text || "🔒 Encrypted message";
   };
 
   const lastMessageStatus = (lastMessage) => {
@@ -119,48 +118,50 @@ const ChatListScreen = ({ navigation }) => {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top + spacing.sm }]}>
-      <StatusBar barStyle="light-content" />
-      <View style={styles.header}>
-        <Text style={styles.headerText}>Chats</Text>
-        <View style={styles.headerActions}>
-          <TouchableOpacity onPress={toggleSearch} style={styles.iconButton}>
-            <Text style={styles.iconButtonText}>{searchOpen ? "✕" : "🔍"}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate("AddContact")} style={styles.iconButton}>
-            <Text style={styles.iconButtonText}>＋</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate("Profile")}>
-            {user?.profilePicUrl ? (
-              <Image source={{ uri: user.profilePicUrl }} style={styles.headerAvatar} />
-            ) : (
-              <View style={styles.headerAvatarPlaceholder}>
-                <Text style={styles.avatarInitial}>{initials(user?.username)}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.headerBg} />
+
+      {/* Top App Bar */}
+      <View style={[styles.appBar, { paddingTop: insets.top + spacing.sm }]}>
+        <View style={styles.appBarRow}>
+          <Text style={styles.appBarTitle}>Chats</Text>
+          <View style={styles.appBarActions}>
+            <TouchableOpacity onPress={toggleSearch} style={styles.appBarIconBtn}>
+              <Text style={styles.appBarIconText}>{searchOpen ? "✕" : "🔍"}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => navigation.navigate("Profile")}>
+              {user?.profilePicUrl ? (
+                <Image source={{ uri: user.profilePicUrl }} style={styles.headerAvatar} />
+              ) : (
+                <View style={styles.headerAvatarPlaceholder}>
+                  <Text style={styles.avatarInitial}>{initials(user?.username)}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
+
+        {searchOpen && (
+          <View style={styles.searchBar}>
+            <Text style={styles.searchIcon}>🔍</Text>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search contacts"
+              placeholderTextColor={colors.textFaint}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoFocus
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery("")}>
+                <Text style={styles.searchClear}>✕</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
       </View>
 
-      {searchOpen && (
-        <View style={styles.searchBar}>
-          <Text style={styles.searchIcon}>🔍</Text>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search contacts"
-            placeholderTextColor={colors.textFaint}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            autoFocus
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery("")}>
-              <Text style={styles.searchClear}>✕</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
-
+      {/* List */}
       {initialLoading ? (
         <View style={{ paddingTop: spacing.sm }}>
           {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -169,16 +170,17 @@ const ChatListScreen = ({ navigation }) => {
         </View>
       ) : filteredConversations.length === 0 ? (
         <View style={styles.empty}>
-          <Text style={styles.emptyText}>{searchQuery ? "No matches" : "No contacts yet"}</Text>
+          <Text style={styles.emptyIcon}>💬</Text>
+          <Text style={styles.emptyText}>{searchQuery ? "No matches" : "No chats yet"}</Text>
           <Text style={styles.emptySubtext}>
-            {searchQuery ? "Try a different name" : "Tap ＋ to add someone with a code"}
+            {searchQuery ? "Try a different name" : "Tap the button below to add someone"}
           </Text>
         </View>
       ) : (
         <FlatList
           data={filteredConversations}
           keyExtractor={(item) => item.conversationId}
-          contentContainerStyle={{ paddingTop: spacing.sm }}
+          contentContainerStyle={{ paddingTop: spacing.xs, paddingBottom: 90 }}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
           }
@@ -188,7 +190,7 @@ const ChatListScreen = ({ navigation }) => {
             return (
               <TouchableOpacity
                 style={[styles.userRow, item.readOnly && styles.userRowDimmed]}
-                activeOpacity={0.7}
+                activeOpacity={0.6}
                 onPress={() =>
                   navigation.navigate("Chat", {
                     otherUser: item.partner,
@@ -215,7 +217,18 @@ const ChatListScreen = ({ navigation }) => {
                 </View>
 
                 <View style={styles.middleCol}>
-                  <Text style={styles.username}>{item.partner.username}</Text>
+                  <View style={styles.rowTop}>
+                    <Text style={styles.username} numberOfLines={1}>
+                      {item.partner.username}
+                    </Text>
+                    {item.lastMessage && (
+                      <Text
+                        style={[styles.time, item.unreadCount > 0 && !item.readOnly && styles.timeUnread]}
+                      >
+                        {formatTime(item.lastMessage.createdAt)}
+                      </Text>
+                    )}
+                  </View>
                   <View style={styles.previewRow}>
                     {status && (
                       <View style={{ marginRight: 3 }}>
@@ -226,67 +239,74 @@ const ChatListScreen = ({ navigation }) => {
                       style={[styles.preview, item.unreadCount > 0 && !item.readOnly && styles.previewUnread]}
                       numberOfLines={1}
                     >
-                      {item.readOnly
-                        ? "Read-only — you're locked elsewhere"
-                        : previewText(item.lastMessage, isOwnLastMessage)}
+                      {item.readOnly ? "Read-only — locked elsewhere" : previewText(item.lastMessage, isOwnLastMessage)}
                     </Text>
+                    {item.unreadCount > 0 && !item.readOnly && (
+                      <View style={styles.badge}>
+                        <Text style={styles.badgeText}>{item.unreadCount > 99 ? "99+" : item.unreadCount}</Text>
+                      </View>
+                    )}
                   </View>
-                </View>
-
-                <View style={styles.rightCol}>
-                  {item.lastMessage && <Text style={styles.time}>{formatTime(item.lastMessage.createdAt)}</Text>}
-                  {item.unreadCount > 0 && !item.readOnly && (
-                    <View style={styles.badge}>
-                      <Text style={styles.badgeText}>{item.unreadCount > 99 ? "99+" : item.unreadCount}</Text>
-                    </View>
-                  )}
                 </View>
               </TouchableOpacity>
             );
           }}
         />
       )}
+
+      {/* Floating Action Button — new chat */}
+      <TouchableOpacity
+        style={[styles.fab, { bottom: Math.max(insets.bottom, spacing.md) + spacing.lg }]}
+        activeOpacity={0.85}
+        onPress={() => navigation.navigate("AddContact")}
+      >
+        <Text style={styles.fabIcon}>💬</Text>
+      </TouchableOpacity>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  header: {
+
+  appBar: {
+    backgroundColor: colors.headerBg,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  appBarRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
   },
-  headerText: { ...typography.h1, fontSize: 26 },
-  headerActions: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  iconButton: {
+  appBarTitle: { ...typography.h1, fontSize: 24, color: colors.text },
+  appBarActions: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  appBarIconBtn: {
     width: 36,
     height: 36,
     borderRadius: radius.full,
-    backgroundColor: colors.surfaceAlt,
     justifyContent: "center",
     alignItems: "center",
     marginRight: spacing.sm,
   },
-  iconButtonText: { color: colors.accentSoft, fontSize: 18, fontWeight: "700" },
-  headerAvatar: { width: 40, height: 40, borderRadius: radius.full },
+  appBarIconText: { color: colors.text, fontSize: 18 },
+
+  headerAvatar: { width: 34, height: 34, borderRadius: radius.full },
   headerAvatarPlaceholder: {
-    width: 40,
-    height: 40,
+    width: 34,
+    height: 34,
     borderRadius: radius.full,
     backgroundColor: colors.accent,
     justifyContent: "center",
     alignItems: "center",
   },
-  avatarInitial: { color: "#fff", fontWeight: "700", fontSize: 16 },
+  avatarInitial: { color: "#fff", fontWeight: "700", fontSize: 15 },
+
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.surface,
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
+    backgroundColor: colors.surfaceAlt,
+    marginTop: spacing.sm,
     borderRadius: radius.full,
     paddingHorizontal: spacing.md,
     paddingVertical: 8,
@@ -294,6 +314,7 @@ const styles = StyleSheet.create({
   searchIcon: { fontSize: 14, marginRight: spacing.sm },
   searchInput: { flex: 1, color: colors.text, fontSize: 15, padding: 0 },
   searchClear: { color: colors.textMuted, fontSize: 16, paddingLeft: spacing.sm },
+
   userRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -314,8 +335,8 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 0,
     right: 0,
-    width: 14,
-    height: 14,
+    width: 13,
+    height: 13,
     borderRadius: 7,
     backgroundColor: colors.online,
     borderWidth: 2,
@@ -330,31 +351,56 @@ const styles = StyleSheet.create({
     padding: 2,
   },
   lockDotText: { fontSize: 10 },
-  middleCol: { flex: 1, marginLeft: spacing.md, marginRight: spacing.sm },
-  username: { ...typography.bodyBold, fontSize: 16 },
-  previewRow: { flexDirection: "row", alignItems: "center", marginTop: 2 },
-  preview: { ...typography.caption, fontSize: 13, flexShrink: 1 },
-  previewUnread: { color: colors.text, fontWeight: "600" },
-  rightCol: { alignItems: "flex-end" },
-  time: { ...typography.caption, fontSize: 11 },
+
+  middleCol: { flex: 1, marginLeft: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, paddingBottom: spacing.sm + 4, marginBottom: -(spacing.sm + 4) },
+  rowTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  username: { ...typography.bodyBold, fontSize: 16.5, flexShrink: 1 },
+  time: { ...typography.caption, fontSize: 12 },
+  timeUnread: { color: colors.unreadBadge, fontWeight: "700" },
+
+  previewRow: { flexDirection: "row", alignItems: "center", marginTop: 3 },
+  preview: { ...typography.caption, fontSize: 13.5, flexShrink: 1, flex: 1 },
+  previewUnread: { color: colors.text, fontWeight: "500" },
+
   badge: {
-    marginTop: 6,
     minWidth: 20,
     height: 20,
     borderRadius: 10,
+    backgroundColor: colors.unreadBadge,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 6,
+    marginLeft: spacing.sm,
+  },
+  badgeText: { color: "#0B141A", fontSize: 11, fontWeight: "800" },
+
+  tickGray: { fontSize: 12, color: colors.textMuted },
+  tickRead: { fontSize: 12, color: colors.accentSoft },
+
+  skeletonBlock: { backgroundColor: colors.surfaceAlt },
+  skeletonLine: { backgroundColor: colors.surfaceAlt, borderRadius: 4 },
+
+  empty: { flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: spacing.xl },
+  emptyIcon: { fontSize: 40, marginBottom: spacing.sm },
+  emptyText: { ...typography.h2, marginBottom: spacing.xs },
+  emptySubtext: { ...typography.body, color: colors.textMuted, textAlign: "center" },
+
+  fab: {
+    position: "absolute",
+    right: spacing.lg,
+    width: 56,
+    height: 56,
+    borderRadius: radius.full,
     backgroundColor: colors.accent,
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 5,
+    elevation: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
   },
-  badgeText: { color: "#fff", fontSize: 11, fontWeight: "700" },
-  tickGray: { fontSize: 11, color: colors.textMuted },
-  tickRead: { fontSize: 11, color: "#4FC3F7" },
-  skeletonBlock: { backgroundColor: colors.surfaceAlt },
-  skeletonLine: { backgroundColor: colors.surfaceAlt, borderRadius: 4 },
-  empty: { flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: spacing.xl },
-  emptyText: { ...typography.h2, marginBottom: spacing.xs },
-  emptySubtext: { ...typography.body, color: colors.textMuted, textAlign: "center" },
+  fabIcon: { fontSize: 24 },
 });
 
 export default ChatListScreen;

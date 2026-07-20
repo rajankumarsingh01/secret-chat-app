@@ -1,3 +1,4 @@
+// mobile/src/components/MessageBubble.js
 import React from "react";
 import { View, Text, Image, StyleSheet, TouchableOpacity, Alert } from "react-native";
 import { colors, radius } from "../theme";
@@ -49,6 +50,9 @@ const MessageBubble = ({ message, isOwnMessage, onReply, onDelete, onReact }) =>
       >
         {message.replyTo ? (
           <View style={styles.replyBox}>
+            <Text style={styles.replyAuthor} numberOfLines={1}>
+              {message.replyTo.sender === message.sender ? "You" : "Original message"}
+            </Text>
             <Text style={styles.replyText} numberOfLines={1}>
               {message.replyTo.deletedForEveryone
                 ? "Original message deleted"
@@ -84,37 +88,48 @@ const MessageBubble = ({ message, isOwnMessage, onReply, onDelete, onReact }) =>
 };
 
 const styles = StyleSheet.create({
-  row: { width: "100%", marginVertical: 3 },
+  row: { width: "100%", marginVertical: 2 },
   rowOwn: { alignItems: "flex-end" },
   rowOther: { alignItems: "flex-start" },
   bubble: {
-    maxWidth: "78%",
-    marginHorizontal: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: radius.lg,
+    maxWidth: "80%",
+    marginHorizontal: 10,
+    paddingHorizontal: 8,
+    paddingTop: 6,
+    paddingBottom: 6,
+    borderRadius: 7,
   },
-  ownBubble: { backgroundColor: colors.accent },
+  ownBubble: { backgroundColor: colors.bubbleOwn },
   otherBubble: { backgroundColor: colors.bubbleOther },
-  tailOwn: { borderBottomRightRadius: 4 },
-  tailOther: { borderBottomLeftRadius: 4 },
-  ownText: { color: "#fff", fontSize: 15, lineHeight: 20 },
-  otherText: { color: colors.text, fontSize: 15, lineHeight: 20 },
-  image: { width: 210, height: 210, borderRadius: radius.sm, marginBottom: 6 },
-  footerRow: { flexDirection: "row", alignItems: "center", alignSelf: "flex-end", marginTop: 4 },
-  time: { fontSize: 10 },
-  timeOwn: { color: "rgba(255,255,255,0.7)" },
+  tailOwn: { borderTopRightRadius: 0 },
+  tailOther: { borderTopLeftRadius: 0 },
+  ownText: { color: colors.text, fontSize: 15.5, lineHeight: 20, paddingHorizontal: 4 },
+  otherText: { color: colors.text, fontSize: 15.5, lineHeight: 20, paddingHorizontal: 4 },
+  image: { width: 220, height: 220, borderRadius: radius.sm, marginBottom: 6 },
+  footerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-end",
+    marginTop: 2,
+    paddingLeft: 12,
+  },
+  time: { fontSize: 11 },
+  timeOwn: { color: colors.textMuted },
   timeOther: { color: colors.textFaint },
-  tickGray: { fontSize: 11, color: "rgba(255,255,255,0.6)", marginLeft: 4 },
-  tickRead: { fontSize: 11, color: "#4FC3F7", marginLeft: 4 },
+  tickGray: { fontSize: 12, color: colors.textMuted, marginLeft: 4 },
+  tickRead: { fontSize: 12, color: colors.accentSoft, marginLeft: 4 },
   replyBox: {
+    backgroundColor: "rgba(255,255,255,0.06)",
     borderLeftWidth: 3,
     borderLeftColor: colors.accentSoft,
+    borderRadius: 6,
     paddingLeft: 8,
+    paddingRight: 6,
+    paddingVertical: 4,
     marginBottom: 6,
-    opacity: 0.85,
   },
-  replyText: { fontSize: 12, color: colors.text },
+  replyAuthor: { fontSize: 12.5, color: colors.accentSoft, fontWeight: "700", marginBottom: 1 },
+  replyText: { fontSize: 12.5, color: colors.textMuted },
   reactionBadge: {
     position: "absolute",
     bottom: -10,
@@ -132,6 +147,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderStyle: "dashed",
+    borderRadius: 7,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   deletedText: { color: colors.textFaint, fontStyle: "italic", fontSize: 13 },
 });
