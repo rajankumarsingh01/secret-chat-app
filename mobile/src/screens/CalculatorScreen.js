@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, StatusBar } fro
 import { colors } from "../theme";
 import { useAuth } from "../context/AuthContext";
 import { evaluateExpression, CalculatorSyntaxError } from "../utils/safeCalculator";
-import { verifyUnlockCode, verifyPanicCode, wipeAllLocalData } from "../services/secretCodes";
+import { verifyUnlockCode, verifyPanicCode, verifyDecoyCode, wipeAllLocalData } from "../services/secretCodes";
 
 const buttons = [
   ["C", "±", "%", "÷"],
@@ -90,6 +90,18 @@ const CalculatorScreen = ({ navigation }) => {
           setDisplay("0");
           setRawInput("");
           navigation.replace(user ? "ChatList" : "Login");
+          return;
+        }
+
+        // Decoy code — opens a fake, self-contained chat list. Doesn't touch the
+        // real session, doesn't call the API or connect the socket. Checked after
+        // the real unlock code so a genuine login always wins if the two somehow
+        // matched (they're prevented from matching at save-time anyway).
+        const isDecoy = await verifyDecoyCode(attempted);
+        if (isDecoy) {
+          setDisplay("0");
+          setRawInput("");
+          navigation.replace("DecoyChatList");
           return;
         }
 

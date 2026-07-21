@@ -174,6 +174,15 @@ const socketHandler = (io) => {
       io.to(otherUserId).emit("lock_state_sync");
     });
 
+    // Fired when this user takes a screenshot inside an unlocked chat. We never see
+    // the screenshot itself — the phone OS just tells the app "a screenshot happened"
+    // — we only relay that fact to the other participant so they know their screen
+    // was captured. No image, no content, ever leaves the device.
+    socket.on("screenshot_taken", ({ otherUserId }) => {
+      if (!otherUserId) return;
+      io.to(otherUserId).emit("screenshot_notice", { by: userId });
+    });
+
     socket.on("typing", ({ receiver }) => {
       io.to(receiver).emit("user_typing", { senderId: userId });
     });

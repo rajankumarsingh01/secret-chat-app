@@ -7,6 +7,8 @@ const UNLOCK_HASH_KEY = "unlock_code_hash";
 const UNLOCK_SALT_KEY = "unlock_code_salt";
 const PANIC_HASH_KEY = "panic_code_hash";
 const PANIC_SALT_KEY = "panic_code_salt";
+const DECOY_HASH_KEY = "decoy_code_hash";
+const DECOY_SALT_KEY = "decoy_code_salt";
 
 // Fallback used ONLY until the user sets their own unlock code from Profile settings.
 // Kept so the app doesn't break for existing users mid-upgrade; nudge users to change it.
@@ -76,9 +78,50 @@ export const verifyPanicCode = async (input) => {
   return inputHash === storedHash;
 };
 
-// ── The wipe itself ──────────────────────────────────────────────────────────
+// ── Decoy code (deniability — opens a fake, empty-looking chat list) ─────────
+
+export const hasDecoyCode = async () => {
+  const hash = await SecureStore.getItemAsync(DECOY_HASH_KEY);
+  return !!hash;
+};
+
+export const setDecoyCode = async (code) => {
+  const salt = await randomSalt();
+  const hash = await hashCode(code, salt);
+  await SecureStore.setItemAsync(DECOY_SALT_KEY, salt);
+  await SecureStore.setItemAsync(DECOY_HASH_KEY, hash);
+};
+
+export const clearDecoyCode = async () => {
+  await SecureStore.deleteItemAsync(DECOY_SALT_KEY);
+  await SecureStore.deleteItemAsync(DECOY_HASH_KEY);
+};
+
+export const verifyDecoyCode = async (input) => {
+  const salt = await SecureStore.getItemAsync(DECOY_SALT_KEY);
+  const storedHash = await SecureStore.getItemAsync(DECOY_HASH_KEY);
+  if (!salt || !storedHash) return false; // no decoy code set = feature is off
+  const inputHash = await hashCode(input, salt);
+  return inputHash === storedHash;
+};
+
+// ── Cross-code collision guard ────────────────────────────────────────────────
+// All three codes (unlock / panic / decoy) are typed into the same calculator
+// keypad, so if two of them were ever equal, only one behaviour could ever fire
+// for it. Call this before saving ANY of the three codes to make sure the new
+// value doesn't collide with either of the other two already-set codes.
+export const collidesWithOtherCodes = async (candidate, skip) => {
+  const checks = [];
+  if (skip !== "unlock") checks.push(verifyUnlockCode(candidate));
+  if (skip !== "panic") checks.push(verifyPanicCode(candidate));
+  if (skip !== "decoy") checks.push(verifyDecoyCode(candidate));
+  const results = await Promise.all(checks);
+  return results.some(Boolean);
+};
+
+
 // Deletes everything this device holds locally: auth session, E2E keypair, and
-// both secret codes. There is nothing else stored on-device (messages are
+// all three secret codes. There is nothing else stored on-device (messages are
 // fetched/decrypted on the fly, never cached to disk) so this is a complete wipe.
 // No confirmation, no visible trace — the calculator should just look untouched.
 export const wipeAllLocalData = async () => {
@@ -97,6 +140,8 @@ export const wipeAllLocalData = async () => {
     UNLOCK_SALT_KEY,
     PANIC_HASH_KEY,
     PANIC_SALT_KEY,
+    DECOY_HASH_KEY,
+    DECOY_SALT_KEY,
   ];
 
   await Promise.all(

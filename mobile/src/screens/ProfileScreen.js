@@ -21,6 +21,10 @@ import {
   hasPanicCode,
   setPanicCode,
   clearPanicCode,
+  hasDecoyCode,
+  setDecoyCode,
+  clearDecoyCode,
+  collidesWithOtherCodes,
 } from "../services/secretCodes";
 import { colors, spacing, radius, typography } from "../theme";
 
@@ -32,6 +36,7 @@ const ProfileScreen = ({ navigation }) => {
 
   const [customUnlockSet, setCustomUnlockSet] = useState(false);
   const [panicSet, setPanicSet] = useState(false);
+  const [decoySet, setDecoySet] = useState(false);
 
   const [unlockCode, setUnlockCodeInput] = useState("");
   const [unlockConfirm, setUnlockConfirm] = useState("");
@@ -41,10 +46,15 @@ const ProfileScreen = ({ navigation }) => {
   const [panicConfirm, setPanicConfirm] = useState("");
   const [savingPanic, setSavingPanic] = useState(false);
 
+  const [decoyCode, setDecoyCodeInput] = useState("");
+  const [decoyConfirm, setDecoyConfirm] = useState("");
+  const [savingDecoy, setSavingDecoy] = useState(false);
+
   useEffect(() => {
     (async () => {
       setCustomUnlockSet(await hasCustomUnlockCode());
       setPanicSet(await hasPanicCode());
+      setDecoySet(await hasDecoyCode());
     })();
   }, []);
 
@@ -55,6 +65,10 @@ const ProfileScreen = ({ navigation }) => {
     }
     if (unlockCode !== unlockConfirm) {
       Alert.alert("Doesn't match", "Both entries must be the same.");
+      return;
+    }
+    if (await collidesWithOtherCodes(unlockCode, "unlock")) {
+      Alert.alert("Code already in use", "This matches your panic or decoy code. Pick a different one.");
       return;
     }
     setSavingUnlock(true);
@@ -78,6 +92,10 @@ const ProfileScreen = ({ navigation }) => {
     }
     if (panicCode !== panicConfirm) {
       Alert.alert("Doesn't match", "Both entries must be the same.");
+      return;
+    }
+    if (await collidesWithOtherCodes(panicCode, "panic")) {
+      Alert.alert("Code already in use", "This matches your unlock or decoy code. Pick a different one.");
       return;
     }
     setSavingPanic(true);
@@ -106,6 +124,50 @@ const ProfileScreen = ({ navigation }) => {
         onPress: async () => {
           await clearPanicCode();
           setPanicSet(false);
+        },
+      },
+    ]);
+  };
+
+  const handleSaveDecoyCode = async () => {
+    if (!CODE_PATTERN.test(decoyCode)) {
+      Alert.alert("Invalid code", "Use 3–10 digits only.");
+      return;
+    }
+    if (decoyCode !== decoyConfirm) {
+      Alert.alert("Doesn't match", "Both entries must be the same.");
+      return;
+    }
+    if (await collidesWithOtherCodes(decoyCode, "decoy")) {
+      Alert.alert("Code already in use", "This matches your unlock or panic code. Pick a different one.");
+      return;
+    }
+    setSavingDecoy(true);
+    try {
+      await setDecoyCode(decoyCode);
+      setDecoySet(true);
+      setDecoyCodeInput("");
+      setDecoyConfirm("");
+      Alert.alert(
+        "Saved",
+        "Decoy code set. Typing it on the calculator opens a fake, empty-looking chat list instead of your real chats — your real account stays completely hidden behind it."
+      );
+    } catch (error) {
+      Alert.alert("Failed", error.message);
+    } finally {
+      setSavingDecoy(false);
+    }
+  };
+
+  const handleClearDecoyCode = () => {
+    Alert.alert("Turn off decoy mode?", "This code will no longer open the fake chat list.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Turn off",
+        style: "destructive",
+        onPress: async () => {
+          await clearDecoyCode();
+          setDecoySet(false);
         },
       },
     ]);
@@ -274,6 +336,53 @@ const ProfileScreen = ({ navigation }) => {
           {panicSet && (
             <TouchableOpacity onPress={handleClearPanicCode} style={styles.turnOffButton} activeOpacity={0.85}>
               <Text style={styles.turnOffText}>Turn off panic wipe</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Decoy code</Text>
+          <Text style={styles.sectionHint}>
+            {decoySet
+              ? "Enabled. Typing this code on the calculator opens a fake, empty-looking chat list — your real chats stay hidden."
+              : "Off by default. Optional — set a separate code that opens a harmless fake chat list instead of your real one."}
+          </Text>
+          <TextInput
+            style={styles.input}
+            placeholder="New decoy code (3–10 digits)"
+            placeholderTextColor={colors.textFaint}
+            keyboardType="number-pad"
+            secureTextEntry
+            maxLength={10}
+            value={decoyCode}
+            onChangeText={setDecoyCodeInput}
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Confirm code"
+            placeholderTextColor={colors.textFaint}
+            keyboardType="number-pad"
+            secureTextEntry
+            maxLength={10}
+            value={decoyConfirm}
+            onChangeText={setDecoyConfirm}
+          />
+          <TouchableOpacity
+            onPress={handleSaveDecoyCode}
+            style={styles.saveButton}
+            activeOpacity={0.85}
+            disabled={savingDecoy}
+          >
+            {savingDecoy ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.saveButtonText}>{decoySet ? "Change decoy code" : "Set decoy code"}</Text>
+            )}
+          </TouchableOpacity>
+
+          {decoySet && (
+            <TouchableOpacity onPress={handleClearDecoyCode} style={styles.turnOffButton} activeOpacity={0.85}>
+              <Text style={styles.turnOffText}>Turn off decoy mode</Text>
             </TouchableOpacity>
           )}
         </View>

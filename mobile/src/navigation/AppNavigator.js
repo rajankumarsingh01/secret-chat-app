@@ -15,6 +15,8 @@ import ChatListScreen from "../screens/ChatListScreen";
 import AddContactScreen from "../screens/AddContactScreen";
 import ChatScreen from "../screens/ChatScreen";
 import ProfileScreen from "../screens/ProfileScreen";
+import DecoyChatListScreen from "../screens/DecoyChatListScreen";
+import DecoyChatScreen from "../screens/DecoyChatScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -53,6 +55,8 @@ const AppNavigator = () => {
         <Stack.Screen name="AddContact" component={AddContactScreen} />
         <Stack.Screen name="Chat" component={ChatScreen} />
         <Stack.Screen name="Profile" component={ProfileScreen} />
+        <Stack.Screen name="DecoyChatList" component={DecoyChatListScreen} />
+        <Stack.Screen name="DecoyChat" component={DecoyChatScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

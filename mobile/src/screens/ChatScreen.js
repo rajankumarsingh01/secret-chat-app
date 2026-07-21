@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
+import * as ScreenCapture from "expo-screen-capture";
 import { Audio } from "expo-av";
 import api from "../services/api";
 import VoiceMessagePlayer, { formatDuration } from "../components/VoiceMessagePlayer";
@@ -57,6 +58,7 @@ const ChatScreen = ({ route, navigation }) => {
   const [recordSeconds, setRecordSeconds] = useState(0);
   const [viewOnceModal, setViewOnceModal] = useState(null);
   const [partnerOnline, setPartnerOnline] = useState(!!otherUser.isOnline);
+  const [screenshotNotice, setScreenshotNotice] = useState(false);
   const recordingRef = useRef(null);
   const recordTimerRef = useRef(null);
   const socket = getSocket();
@@ -73,11 +75,28 @@ const ChatScreen = ({ route, navigation }) => {
     };
   }, []);
 
+  // Detects when THIS device takes a screenshot of the chat and tells the other
+  // participant it happened. We never see the screenshot's content — only the OS
+  // event that it was taken — so nothing sensitive is transmitted, just the fact.
+  useEffect(() => {
+    const subscription = ScreenCapture.addScreenshotListener(() => {
+      if (socket) socket.emit("screenshot_taken", { otherUserId: otherUser._id });
+    });
+    return () => subscription.remove();
+  }, [socket]);
+
   useEffect(() => {
     if (!socket) return;
 
     const handleStatusChange = ({ userId, isOnline }) => {
       if (userId === otherUser._id) setPartnerOnline(isOnline);
+    };
+
+    // Auto-dismissing local banner — shown only to the person whose screen was
+    // captured, never any content, just the fact that it happened.
+    const handleScreenshotNotice = () => {
+      setScreenshotNotice(true);
+      setTimeout(() => setScreenshotNotice(false), 4000);
     };
 
     // Fires on every (re)connection. On the very first connect this just re-does
@@ -95,6 +114,7 @@ const ChatScreen = ({ route, navigation }) => {
     socket.on("view_once_opened_sync", handleViewOnceSync);
     socket.on("lock_state_sync", fetchLockStatus);
     socket.on("user_status_changed", handleStatusChange);
+    socket.on("screenshot_notice", handleScreenshotNotice);
     socket.on("connect", handleReconnect);
     return () => {
       socket.off("receive_message", handleIncomingMessage);
@@ -104,6 +124,7 @@ const ChatScreen = ({ route, navigation }) => {
       socket.off("view_once_opened_sync", handleViewOnceSync);
       socket.off("lock_state_sync", fetchLockStatus);
       socket.off("user_status_changed", handleStatusChange);
+      socket.off("screenshot_notice", handleScreenshotNotice);
       socket.off("connect", handleReconnect);
     };
   }, [mySecretKey]);
@@ -622,6 +643,11 @@ const ChatScreen = ({ route, navigation }) => {
       </View>
 
       {renderBanner()}
+      {screenshotNotice && (
+        <View style={styles.screenshotBanner}>
+          <Text style={styles.screenshotBannerText}>📸 {otherUser.username} took a screenshot</Text>
+        </View>
+      )}
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -788,6 +814,8 @@ const styles = StyleSheet.create({
   headerIconText: { fontSize: 19, color: colors.text },
 
   banner: { backgroundColor: colors.surfaceAlt, padding: spacing.sm, alignItems: "center" },
+  screenshotBanner: { backgroundColor: colors.danger, padding: spacing.sm, alignItems: "center" },
+  screenshotBannerText: { color: "#fff", fontSize: 12, fontWeight: "600" },
   bannerAction: { backgroundColor: colors.surfaceAlt, padding: spacing.sm },
   bannerText: { color: colors.text, fontSize: 12, textAlign: "center" },
   bannerButtons: { flexDirection: "row", justifyContent: "center", gap: spacing.sm, marginTop: spacing.sm },
