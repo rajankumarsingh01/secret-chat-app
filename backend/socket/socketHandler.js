@@ -38,9 +38,19 @@ const socketHandler = (io) => {
 
     socket.on("send_message", async (data) => {
       try {
-        const { receiver, cipherText, nonce, imageUrl, replyTo } = data;
+        const {
+          receiver,
+          cipherText,
+          nonce,
+          imageUrl,
+          audioUrl,
+          audioDuration,
+          mediaPublicId,
+          viewOnce,
+          replyTo,
+        } = data;
 
-        if (!receiver || (!cipherText && !imageUrl)) {
+        if (!receiver || (!cipherText && !imageUrl && !audioUrl)) {
           return socket.emit("error_message", { message: "Invalid message data" });
         }
 
@@ -62,11 +72,15 @@ const socketHandler = (io) => {
           cipherText: cipherText || "",
           nonce: nonce || "",
           imageUrl: imageUrl || "",
+          audioUrl: audioUrl || "",
+          audioDuration: audioDuration || 0,
+          mediaPublicId: mediaPublicId || "",
+          viewOnce: !!viewOnce,
           replyTo: replyTo || null,
           isDelivered: receiverIsConnected,
         });
 
-        message = await message.populate("replyTo", "cipherText nonce imageUrl sender deletedForEveryone");
+        message = await message.populate("replyTo", "cipherText nonce imageUrl audioUrl sender deletedForEveryone viewOnce viewOnceOpened");
 
         io.to(receiver).emit("receive_message", message);
         io.to(userId).emit("receive_message", message);
@@ -115,6 +129,13 @@ const socketHandler = (io) => {
 
     socket.on("message_deleted", ({ messageId, otherUserId }) => {
       io.to(otherUserId).emit("message_deleted_sync", { messageId });
+    });
+
+    // Sender/receiver both need to know a view-once message is gone the instant
+    // it's opened, so it can't be re-shown from the other device's cache either.
+    socket.on("view_once_opened", ({ messageId, otherUserId }) => {
+      io.to(otherUserId).emit("view_once_opened_sync", { messageId });
+      io.to(userId).emit("view_once_opened_sync", { messageId });
     });
 
     // Notify the partner in real time that a lock/unlock action happened — they should refresh state

@@ -24,6 +24,36 @@ const messageSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    audioUrl: {
+      type: String,
+      default: "",
+    },
+    audioDuration: {
+      // duration of the voice note in seconds (client-measured)
+      type: Number,
+      default: 0,
+    },
+    // Cloudinary public_id for whichever media (image/audio) this message carries.
+    // Needed so we can actually delete the asset from Cloudinary on view-once open
+    // or "delete for everyone", instead of just hiding the URL.
+    mediaPublicId: {
+      type: String,
+      default: "",
+    },
+    // "Read once" media — once the receiver opens it, the media is deleted
+    // from the server/Cloudinary for both sides.
+    viewOnce: {
+      type: Boolean,
+      default: false,
+    },
+    viewOnceOpened: {
+      type: Boolean,
+      default: false,
+    },
+    viewOnceOpenedAt: {
+      type: Date,
+      default: null,
+    },
     isRead: {
       type: Boolean,
       default: false,

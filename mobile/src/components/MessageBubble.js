@@ -2,6 +2,7 @@
 import React from "react";
 import { View, Text, Image, StyleSheet, TouchableOpacity, Alert } from "react-native";
 import { colors, radius } from "../theme";
+import VoiceMessagePlayer from "./VoiceMessagePlayer";
 
 const Tick = ({ status }) => {
   // status: "sent" | "delivered" | "read"
@@ -10,10 +11,32 @@ const Tick = ({ status }) => {
   return <Text style={styles.tickGray}>✓</Text>;
 };
 
-const MessageBubble = ({ message, isOwnMessage, onReply, onDelete, onReact }) => {
+const replyPreviewLabel = (replyTo) => {
+  if (!replyTo) return "";
+  if (replyTo.deletedForEveryone) return "Original message deleted";
+  if (replyTo.viewOnce) return "🔥 View once message";
+  if (replyTo.audioUrl) return "🎤 Voice message";
+  if (replyTo.imageUrl) return "📷 Photo";
+  return replyTo.text || "...";
+};
+
+const MessageBubble = ({ message, isOwnMessage, onReply, onDelete, onReact, onOpenViewOnce }) => {
   const status = message.isRead ? "read" : message.isDelivered ? "delivered" : "sent";
 
   const handleLongPress = () => {
+    // View-once media that hasn't been opened yet can't be reacted to/replied to
+    // from the sender side without giving away its contents indirectly.
+    if (message.viewOnce && !message.viewOnceOpened) {
+      const options = [];
+      if (isOwnMessage) {
+        options.push({ text: "Delete for everyone", style: "destructive", onPress: () => onDelete(message, "everyone") });
+      }
+      options.push({ text: "Delete for me", style: "destructive", onPress: () => onDelete(message, "me") });
+      options.push({ text: "Cancel", style: "cancel" });
+      Alert.alert("Message options", "", options);
+      return;
+    }
+
     const options = [
       { text: "Reply", onPress: () => onReply(message) },
       { text: "React 😊", onPress: () => onReact(message) },
@@ -37,6 +60,53 @@ const MessageBubble = ({ message, isOwnMessage, onReply, onDelete, onReact }) =>
     );
   }
 
+  // ── View-once media ──────────────────────────────────────────────────────
+  if (message.viewOnce) {
+    if (message.viewOnceOpened) {
+      return (
+        <View style={[styles.row, isOwnMessage ? styles.rowOwn : styles.rowOther]}>
+          <View style={[styles.bubble, styles.deletedBubble]}>
+            <Text style={styles.deletedText}>🔥 Viewed</Text>
+          </View>
+        </View>
+      );
+    }
+
+    const mediaLabel = message.audioUrl ? "Voice message" : "Photo";
+
+    if (isOwnMessage) {
+      return (
+        <View style={[styles.row, styles.rowOwn]}>
+          <View style={[styles.bubble, styles.ownBubble, styles.tailOwn, styles.viewOnceCard]}>
+            <Text style={styles.viewOnceIcon}>🔥</Text>
+            <Text style={styles.viewOnceText}>{mediaLabel} · view once</Text>
+            <Text style={styles.viewOnceSubtext}>Waiting to be opened</Text>
+            <View style={styles.footerRow}>
+              <Text style={[styles.time, styles.timeOwn]}>
+                {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              </Text>
+              <Tick status={status} />
+            </View>
+          </View>
+        </View>
+      );
+    }
+
+    return (
+      <View style={[styles.row, styles.rowOther]}>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => onOpenViewOnce(message)}
+          style={[styles.bubble, styles.otherBubble, styles.tailOther, styles.viewOnceCard]}
+        >
+          <Text style={styles.viewOnceIcon}>🔥</Text>
+          <Text style={styles.viewOnceText}>Tap to view {mediaLabel.toLowerCase()}</Text>
+          <Text style={styles.viewOnceSubtext}>Disappears after you view it</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.row, isOwnMessage ? styles.rowOwn : styles.rowOther]}>
       <TouchableOpacity
@@ -54,17 +124,16 @@ const MessageBubble = ({ message, isOwnMessage, onReply, onDelete, onReact }) =>
               {message.replyTo.sender === message.sender ? "You" : "Original message"}
             </Text>
             <Text style={styles.replyText} numberOfLines={1}>
-              {message.replyTo.deletedForEveryone
-                ? "Original message deleted"
-                : message.replyTo.imageUrl
-                ? "📷 Photo"
-                : message.replyTo.text || "..."}
+              {replyPreviewLabel(message.replyTo)}
             </Text>
           </View>
         ) : null}
 
         {message.imageUrl ? (
           <Image source={{ uri: message.imageUrl }} style={styles.image} />
+        ) : null}
+        {message.audioUrl ? (
+          <VoiceMessagePlayer uri={message.audioUrl} duration={message.audioDuration} isOwnMessage={isOwnMessage} />
         ) : null}
         {message.text ? (
           <Text style={isOwnMessage ? styles.ownText : styles.otherText}>{message.text}</Text>
@@ -152,6 +221,10 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   deletedText: { color: colors.textFaint, fontStyle: "italic", fontSize: 13 },
+  viewOnceCard: { paddingHorizontal: 14, paddingVertical: 12, minWidth: 170 },
+  viewOnceIcon: { fontSize: 20, marginBottom: 4 },
+  viewOnceText: { color: colors.text, fontSize: 14, fontWeight: "700" },
+  viewOnceSubtext: { color: colors.textMuted, fontSize: 11.5, marginTop: 2 },
 });
 
 export default MessageBubble;

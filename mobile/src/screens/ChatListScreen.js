@@ -84,6 +84,10 @@ const ChatListScreen = ({ navigation }) => {
   const previewText = (lastMessage, isOwn) => {
     if (!lastMessage) return "Say hi 👋";
     if (lastMessage.deletedForEveryone) return "🚫 Message deleted";
+    if (lastMessage.viewOnce && lastMessage.viewOnceOpened) return "🔥 Viewed";
+    if (lastMessage.viewOnce && lastMessage.audioUrl) return "🔥 View once voice message";
+    if (lastMessage.viewOnce && lastMessage.imageUrl) return "🔥 View once photo";
+    if (lastMessage.audioUrl) return "🎤 Voice message";
     if (lastMessage.imageUrl) return "📷 Photo";
     return lastMessage.text || "🔒 Encrypted message";
   };
@@ -185,7 +189,7 @@ const ChatListScreen = ({ navigation }) => {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
           }
           renderItem={({ item }) => {
-            const isOwnLastMessage = item.lastMessage?.sender === user._id;
+            const isOwnLastMessage = item.lastMessage?.sender === user?._id;
             const status = isOwnLastMessage ? lastMessageStatus(item.lastMessage) : null;
             return (
               <TouchableOpacity

@@ -3,6 +3,7 @@ const Message = require("../models/Message");
 const User = require("../models/User");
 const Conversation = require("../models/Conversation");
 const uploadToCloudinary = require("../utils/cloudinaryUpload");
+const { deleteFromCloudinary } = require("../utils/cloudinaryUpload");
 
 const getSharedConversation = async (userId, otherUserId) => {
   return Conversation.findOne({ participants: { $all: [userId, otherUserId] } });
@@ -52,7 +53,7 @@ const getMessages = async (req, res) => {
     const messages = await Message.find(query)
       .sort({ createdAt: -1 })
       .limit(limitNum)
-      .populate("replyTo", "cipherText nonce imageUrl sender deletedForEveryone");
+      .populate("replyTo", "cipherText nonce imageUrl audioUrl sender deletedForEveryone viewOnce viewOnceOpened");
 
     const hasMore = messages.length === limitNum;
 
@@ -101,7 +102,68 @@ const uploadChatImage = async (req, res) => {
 
     const result = await uploadToCloudinary(req.file.buffer, "chat-app/chat-images");
 
-    res.status(200).json({ imageUrl: result.secure_url });
+    res.status(200).json({ imageUrl: result.secure_url, mediaPublicId: result.public_id });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const uploadVoiceMessage = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "No audio file provided" });
+    }
+
+    const duration = parseFloat(req.body.duration) || 0;
+
+    // Cloudinary has no "audio" resource type — voice notes are uploaded as "video"
+    const result = await uploadToCloudinary(req.file.buffer, "chat-app/chat-voice", "video");
+
+    res.status(200).json({
+      audioUrl: result.secure_url,
+      audioDuration: duration,
+      mediaPublicId: result.public_id,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc Mark a "view once" media message as opened — deletes the underlying media
+// (both from Cloudinary and from the DB record) so it truly can't be viewed again.
+// Only the receiver can open it, and only once.
+const openViewOnceMessage = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+
+    const message = await Message.findById(messageId);
+    if (!message) {
+      return res.status(404).json({ message: "Message not found" });
+    }
+
+    if (message.receiver.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "Only the recipient can open this" });
+    }
+
+    if (!message.viewOnce) {
+      return res.status(400).json({ message: "This message isn't a view-once message" });
+    }
+
+    if (message.viewOnceOpened) {
+      return res.status(410).json({ message: "This media has already been viewed and removed" });
+    }
+
+    const resourceType = message.audioUrl ? "video" : "image";
+    await deleteFromCloudinary(message.mediaPublicId, resourceType);
+
+    message.viewOnceOpened = true;
+    message.viewOnceOpenedAt = new Date();
+    message.imageUrl = "";
+    message.audioUrl = "";
+    message.mediaPublicId = "";
+    await message.save();
+
+    res.status(200).json({ message: "Opened", messageId });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -130,7 +192,9 @@ const getConversations = async (req, res) => {
           deletedFor: { $ne: userId },
         })
           .sort({ createdAt: -1 })
-          .select("cipherText nonce imageUrl sender createdAt deletedForEveryone isRead isDelivered");
+          .select(
+            "cipherText nonce imageUrl audioUrl sender createdAt deletedForEveryone isRead isDelivered viewOnce viewOnceOpened"
+          );
 
         const unreadCount = await Message.countDocuments({
           sender: partner._id,
@@ -190,10 +254,17 @@ const deleteMessage = async (req, res) => {
       if (Date.now() - new Date(message.createdAt).getTime() > ONE_HOUR) {
         return res.status(400).json({ message: "This message is too old to delete for everyone" });
       }
+      if (message.mediaPublicId) {
+        const resourceType = message.audioUrl ? "video" : "image";
+        await deleteFromCloudinary(message.mediaPublicId, resourceType);
+      }
+
       message.deletedForEveryone = true;
       message.cipherText = "";
       message.nonce = "";
       message.imageUrl = "";
+      message.audioUrl = "";
+      message.mediaPublicId = "";
       await message.save();
     } else {
       if (!message.deletedFor.includes(req.user._id)) {
@@ -212,6 +283,8 @@ module.exports = {
   getMessages,
   sendMessage,
   uploadChatImage,
+  uploadVoiceMessage,
+  openViewOnceMessage,
   getConversations,
   deleteMessage,
   canMessage,

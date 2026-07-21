@@ -13,7 +13,10 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Used to record voice messages you send in chats."
+      }
     },
     "android": {
       "package": "com.rajankumarsingh.secretchatapp",
@@ -21,14 +24,23 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-secure-store",
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Used to record voice messages you send in chats."
+        }
+      ]
     ],
     "extra": {
       "eas": {

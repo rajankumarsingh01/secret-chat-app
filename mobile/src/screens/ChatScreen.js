@@ -12,10 +12,13 @@ import {
   Alert,
   Image,
   ActivityIndicator,
+  Modal,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
+import { Audio } from "expo-av";
 import api from "../services/api";
+import VoiceMessagePlayer, { formatDuration } from "../components/VoiceMessagePlayer";
 import { getSocket } from "../services/socket";
 import { useAuth } from "../context/AuthContext";
 import MessageBubble from "../components/MessageBubble";
@@ -49,12 +52,24 @@ const ChatScreen = ({ route, navigation }) => {
   const [mySecretKey, setMySecretKey] = useState(null);
   const [replyingTo, setReplyingTo] = useState(null);
   const [lockStatus, setLockStatus] = useState(null);
+  const [viewOnceMode, setViewOnceMode] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordSeconds, setRecordSeconds] = useState(0);
+  const [viewOnceModal, setViewOnceModal] = useState(null);
+  const recordingRef = useRef(null);
+  const recordTimerRef = useRef(null);
   const socket = getSocket();
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
     init();
     fetchLockStatus();
+    return () => {
+      if (recordTimerRef.current) clearInterval(recordTimerRef.current);
+      if (recordingRef.current) {
+        recordingRef.current.stopAndUnloadAsync().catch(() => {});
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -63,12 +78,14 @@ const ChatScreen = ({ route, navigation }) => {
     socket.on("message_delivered", handleDelivered);
     socket.on("message_reacted", handleReacted);
     socket.on("message_deleted_sync", handleDeletedSync);
+    socket.on("view_once_opened_sync", handleViewOnceSync);
     socket.on("lock_state_sync", fetchLockStatus);
     return () => {
       socket.off("receive_message", handleIncomingMessage);
       socket.off("message_delivered", handleDelivered);
       socket.off("message_reacted", handleReacted);
       socket.off("message_deleted_sync", handleDeletedSync);
+      socket.off("view_once_opened_sync", handleViewOnceSync);
       socket.off("lock_state_sync", fetchLockStatus);
     };
   }, [mySecretKey]);
@@ -88,7 +105,7 @@ const ChatScreen = ({ route, navigation }) => {
   };
 
   const decryptForDisplay = (message, secretKey) => {
-    if (message.imageUrl || message.deletedForEveryone) return message;
+    if (message.imageUrl || message.audioUrl || message.deletedForEveryone || message.viewOnce) return message;
     const decryptedText = decryptMessage(message.cipherText, message.nonce, otherUser.publicKey, secretKey);
     return { ...message, text: decryptedText };
   };
@@ -113,7 +130,15 @@ const ChatScreen = ({ route, navigation }) => {
 
   const handleDeletedSync = ({ messageId }) => {
     setMessages((prev) =>
-      prev.map((m) => (m._id === messageId ? { ...m, deletedForEveryone: true, text: "", imageUrl: "" } : m))
+      prev.map((m) => (m._id === messageId ? { ...m, deletedForEveryone: true, text: "", imageUrl: "", audioUrl: "" } : m))
+    );
+  };
+
+  // Fired when either side opens a view-once message — the media is gone from
+  // the server now, so both bubbles must stop showing it immediately.
+  const handleViewOnceSync = ({ messageId }) => {
+    setMessages((prev) =>
+      prev.map((m) => (m._id === messageId ? { ...m, viewOnceOpened: true, imageUrl: "", audioUrl: "" } : m))
     );
   };
 
@@ -191,15 +216,124 @@ const ChatScreen = ({ route, navigation }) => {
         socket.emit("send_message", {
           receiver: otherUser._id,
           imageUrl: response.data.imageUrl,
+          mediaPublicId: response.data.mediaPublicId,
+          viewOnce: viewOnceMode,
           replyTo: replyingTo?._id || null,
         });
       }
       setReplyingTo(null);
+      setViewOnceMode(false);
     } catch (error) {
       Alert.alert("Upload failed", error.response?.data?.message || error.message);
     } finally {
       setUploading(false);
     }
+  };
+
+  // ── Voice messages ────────────────────────────────────────────────────────
+
+  const startRecording = async () => {
+    if (initialReadOnly || isRecording) return;
+    try {
+      const permission = await Audio.requestPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("Permission needed", "Allow microphone access to record voice messages");
+        return;
+      }
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      recordingRef.current = recording;
+      setRecordSeconds(0);
+      setIsRecording(true);
+      recordTimerRef.current = setInterval(() => setRecordSeconds((s) => s + 1), 1000);
+    } catch (error) {
+      Alert.alert("Recording failed", error.message);
+    }
+  };
+
+  const stopRecording = async ({ send }) => {
+    if (recordTimerRef.current) clearInterval(recordTimerRef.current);
+    setIsRecording(false);
+
+    const recording = recordingRef.current;
+    recordingRef.current = null;
+    if (!recording) return;
+
+    const durationSec = recordSeconds;
+    try {
+      await recording.stopAndUnloadAsync();
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+      const uri = recording.getURI();
+      if (send && uri && durationSec >= 1) {
+        await sendVoiceMessage(uri, durationSec);
+      }
+    } catch (error) {
+      console.log("Stop recording error:", error.message);
+    }
+  };
+
+  const sendVoiceMessage = async (uri, durationSec) => {
+    if (initialReadOnly) return;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("audio", { uri, type: "audio/m4a", name: "voice-message.m4a" });
+      formData.append("duration", String(durationSec));
+      const response = await api.post("/chat/upload-voice", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      if (socket) {
+        socket.emit("send_message", {
+          receiver: otherUser._id,
+          audioUrl: response.data.audioUrl,
+          audioDuration: response.data.audioDuration,
+          mediaPublicId: response.data.mediaPublicId,
+          viewOnce: viewOnceMode,
+          replyTo: replyingTo?._id || null,
+        });
+      }
+      setReplyingTo(null);
+      setViewOnceMode(false);
+    } catch (error) {
+      Alert.alert("Upload failed", error.response?.data?.message || error.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleMicPress = () => {
+    if (isRecording) {
+      stopRecording({ send: true });
+    } else {
+      startRecording();
+    }
+  };
+
+  const cancelRecording = () => stopRecording({ send: false });
+
+  // ── View-once media ───────────────────────────────────────────────────────
+
+  const handleOpenViewOnce = async (message) => {
+    if (message.viewOnceOpened) return;
+    // Show it using the copy we already have client-side, then tell the server
+    // to delete it — once this resolves (or the modal is closed) it's gone for good.
+    setViewOnceModal({ ...message });
+    setMessages((prev) =>
+      prev.map((m) => (m._id === message._id ? { ...m, viewOnceOpened: true, imageUrl: "", audioUrl: "" } : m))
+    );
+    try {
+      await api.post(`/chat/${message._id}/view-once`);
+    } catch (error) {
+      console.log("Error opening view-once message:", error.message);
+    }
+    if (socket) socket.emit("view_once_opened", { messageId: message._id, otherUserId: otherUser._id });
+  };
+
+  const closeViewOnceModal = () => setViewOnceModal(null);
+
+  const toggleViewOnceMode = () => {
+    if (initialReadOnly) return;
+    setViewOnceMode((prev) => !prev);
   };
 
   const handleReply = (message) => setReplyingTo(message);
@@ -220,7 +354,7 @@ const ChatScreen = ({ route, navigation }) => {
       await api.delete(`/chat/${message._id}`, { data: { mode } });
       if (mode === "everyone") {
         setMessages((prev) =>
-          prev.map((m) => (m._id === message._id ? { ...m, deletedForEveryone: true, text: "", imageUrl: "" } : m))
+          prev.map((m) => (m._id === message._id ? { ...m, deletedForEveryone: true, text: "", imageUrl: "", audioUrl: "" } : m))
         );
         socket.emit("message_deleted", { messageId: message._id, otherUserId: otherUser._id });
       } else {
@@ -475,6 +609,7 @@ const ChatScreen = ({ route, navigation }) => {
                   onReply={handleReply}
                   onReact={handleReact}
                   onDelete={handleDelete}
+                  onOpenViewOnce={handleOpenViewOnce}
                 />
               )}
               onEndReached={loadMoreMessages}
@@ -498,7 +633,7 @@ const ChatScreen = ({ route, navigation }) => {
                 Replying to {replyingTo.sender === user._id ? "yourself" : otherUser.username}
               </Text>
               <Text style={styles.replyPreviewText} numberOfLines={1}>
-                {replyingTo.imageUrl ? "📷 Photo" : replyingTo.text}
+                {replyingTo.viewOnce ? "🔥 View once message" : replyingTo.audioUrl ? "🎤 Voice message" : replyingTo.imageUrl ? "📷 Photo" : replyingTo.text}
               </Text>
             </View>
             <TouchableOpacity onPress={() => setReplyingTo(null)} style={styles.replyCancelBtn}>
@@ -511,15 +646,34 @@ const ChatScreen = ({ route, navigation }) => {
           <View style={[styles.readOnlyBar, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
             <Text style={styles.readOnlyText}>This chat is read-only right now</Text>
           </View>
+        ) : isRecording ? (
+          <View style={[styles.recordingRow, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+            <TouchableOpacity onPress={cancelRecording} style={styles.recordingCancelBtn}>
+              <Text style={styles.recordingCancelText}>✕</Text>
+            </TouchableOpacity>
+            <View style={styles.recordingPill}>
+              <View style={styles.recordingDot} />
+              <Text style={styles.recordingText}>Recording… {formatDuration(recordSeconds)}</Text>
+            </View>
+            <TouchableOpacity onPress={handleMicPress} style={styles.sendButton} activeOpacity={0.8}>
+              <Text style={styles.sendButtonText}>⏹</Text>
+            </TouchableOpacity>
+          </View>
         ) : (
           <View style={[styles.inputRow, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+            <TouchableOpacity
+              onPress={toggleViewOnceMode}
+              style={[styles.viewOnceToggle, viewOnceMode && styles.viewOnceToggleActive]}
+            >
+              <Text style={styles.viewOnceToggleText}>🔥</Text>
+            </TouchableOpacity>
             <View style={styles.inputPill}>
               <TouchableOpacity onPress={pickAndSendImage} disabled={uploading} style={styles.attachBtn}>
                 <Text style={styles.attachBtnText}>{uploading ? "…" : "📎"}</Text>
               </TouchableOpacity>
               <TextInput
                 style={styles.input}
-                placeholder="Message"
+                placeholder={viewOnceMode ? "View once photo/voice…" : "Message"}
                 placeholderTextColor={colors.textFaint}
                 value={text}
                 onChangeText={setText}
@@ -531,12 +685,36 @@ const ChatScreen = ({ route, navigation }) => {
                 </TouchableOpacity>
               )}
             </View>
-            <TouchableOpacity onPress={sendTextMessage} style={styles.sendButton} activeOpacity={0.8}>
+            <TouchableOpacity
+              onPress={text.trim() ? sendTextMessage : handleMicPress}
+              style={styles.sendButton}
+              activeOpacity={0.8}
+            >
               <Text style={styles.sendButtonText}>{text.trim() ? "➤" : "🎤"}</Text>
             </TouchableOpacity>
           </View>
         )}
       </KeyboardAvoidingView>
+
+      <Modal visible={!!viewOnceModal} transparent animationType="fade" onRequestClose={closeViewOnceModal}>
+        <View style={styles.viewOnceOverlay}>
+          <TouchableOpacity onPress={closeViewOnceModal} style={styles.viewOnceCloseBtn}>
+            <Text style={styles.viewOnceCloseText}>✕</Text>
+          </TouchableOpacity>
+          {viewOnceModal?.imageUrl ? (
+            <Image source={{ uri: viewOnceModal.imageUrl }} style={styles.viewOnceImage} resizeMode="contain" />
+          ) : viewOnceModal?.audioUrl ? (
+            <View style={styles.viewOnceAudioCard}>
+              <VoiceMessagePlayer
+                uri={viewOnceModal.audioUrl}
+                duration={viewOnceModal.audioDuration}
+                isOwnMessage={false}
+              />
+            </View>
+          ) : null}
+          <Text style={styles.viewOnceHint}>This will disappear once you close it</Text>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -639,6 +817,59 @@ const styles = StyleSheet.create({
 
   readOnlyBar: { padding: spacing.md, alignItems: "center", backgroundColor: colors.bg, borderTopWidth: 1, borderTopColor: colors.border },
   readOnlyText: { color: colors.textFaint, fontSize: 13, fontStyle: "italic" },
+
+  viewOnceToggle: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.full,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: spacing.xs,
+    opacity: 0.4,
+  },
+  viewOnceToggleActive: { opacity: 1, backgroundColor: colors.surfaceAlt },
+  viewOnceToggleText: { fontSize: 18 },
+
+  recordingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.sm,
+    backgroundColor: colors.bg,
+  },
+  recordingCancelBtn: { padding: spacing.sm, marginRight: spacing.xs },
+  recordingCancelText: { color: colors.textMuted, fontSize: 18 },
+  recordingPill: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.md,
+    marginRight: spacing.sm,
+    minHeight: 44,
+  },
+  recordingDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.danger, marginRight: spacing.sm },
+  recordingText: { color: colors.text, fontSize: 14.5 },
+
+  viewOnceOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.95)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: spacing.lg,
+  },
+  viewOnceCloseBtn: { position: "absolute", top: 50, right: spacing.lg, padding: spacing.sm, zIndex: 1 },
+  viewOnceCloseText: { color: "#fff", fontSize: 22 },
+  viewOnceImage: { width: "100%", height: "70%" },
+  viewOnceAudioCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
+    minWidth: 260,
+  },
+  viewOnceHint: { color: colors.textMuted, fontSize: 13, marginTop: spacing.lg, textAlign: "center" },
 });
 
 export default ChatScreen;
