@@ -1,9 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, StatusBar } from "react-native";
 import { colors } from "../theme";
 import { useAuth } from "../context/AuthContext";
-
-const SECRET_CODE = "123";
+import { evaluateExpression, CalculatorSyntaxError } from "../utils/safeCalculator";
+import { verifyUnlockCode, verifyPanicCode, wipeAllLocalData } from "../services/secretCodes";
 
 const buttons = [
   ["C", "±", "%", "÷"],
@@ -18,12 +18,24 @@ const OP_MAP = { "÷": "/", "×": "*", "−": "-", "+": "+" };
 const CalculatorScreen = ({ navigation }) => {
   const [display, setDisplay] = useState("0");
   const [rawInput, setRawInput] = useState("");
+  const busyRef = useRef(false); // guards against double-taps on "=" while codes are being checked
 
-  const { user } = useAuth();
+  const { user, clearSessionSilently } = useAuth();
 
   const isOperator = (v) => ["÷", "×", "−", "+"].includes(v);
 
-  const handlePress = (value) => {
+  const runNormalCalculation = () => {
+    try {
+      const result = evaluateExpression(rawInput);
+      setDisplay(String(result));
+      setRawInput(String(result));
+    } catch (error) {
+      setDisplay("Error");
+      setRawInput("");
+    }
+  };
+
+  const handlePress = async (value) => {
     if (value === "C") {
       setDisplay("0");
       setRawInput("");
@@ -40,29 +52,50 @@ const CalculatorScreen = ({ navigation }) => {
 
     if (value === "%") {
       try {
-        const result = eval(rawInput) / 100;
+        const result = evaluateExpression(rawInput) / 100;
         setDisplay(String(result));
         setRawInput(String(result));
-      } catch {
+      } catch (error) {
         setDisplay("Error");
+        setRawInput("");
       }
       return;
     }
 
     if (value === "=") {
-     if (rawInput.trim() === SECRET_CODE) {
-        setDisplay("0");
-        setRawInput("");
-      navigation.replace(user ? "ChatList" : "Login");
+      if (busyRef.current) return;
+      const attempted = rawInput.trim();
+
+      if (!attempted) {
+        runNormalCalculation();
         return;
       }
+
+      busyRef.current = true;
       try {
-        const result = eval(rawInput);
-        setDisplay(String(result));
-        setRawInput(String(result));
-      } catch {
-        setDisplay("Error");
-        setRawInput("");
+        // Duress/panic code is checked FIRST — if someone is being forced to unlock
+        // the app under coercion, this must win over the normal unlock code.
+        const isPanic = await verifyPanicCode(attempted);
+        if (isPanic) {
+          setDisplay("0");
+          setRawInput("");
+          await wipeAllLocalData();
+          clearSessionSilently();
+          // No navigation, no alert — the calculator just carries on looking normal.
+          return;
+        }
+
+        const isUnlock = await verifyUnlockCode(attempted);
+        if (isUnlock) {
+          setDisplay("0");
+          setRawInput("");
+          navigation.replace(user ? "ChatList" : "Login");
+          return;
+        }
+
+        runNormalCalculation();
+      } finally {
+        busyRef.current = false;
       }
       return;
     }

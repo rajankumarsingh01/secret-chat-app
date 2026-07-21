@@ -72,8 +72,15 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
+  // Called after a duress/panic wipe has already deleted everything from SecureStore.
+  // Only resets in-memory state — does NOT touch storage itself (secretCodes.wipeAllLocalData
+  // already did that), so it stays fast and silent.
+  const clearSessionSilently = () => {
+    setUser(null);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, setUser, loading, login, signup, logout }}>
+    <AuthContext.Provider value={{ user, setUser, loading, login, signup, logout, clearSessionSilently }}>
       {children}
     </AuthContext.Provider>
   );
