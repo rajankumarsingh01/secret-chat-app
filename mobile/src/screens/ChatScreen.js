@@ -56,6 +56,7 @@ const ChatScreen = ({ route, navigation }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
   const [viewOnceModal, setViewOnceModal] = useState(null);
+  const [partnerOnline, setPartnerOnline] = useState(!!otherUser.isOnline);
   const recordingRef = useRef(null);
   const recordTimerRef = useRef(null);
   const socket = getSocket();
@@ -74,12 +75,27 @@ const ChatScreen = ({ route, navigation }) => {
 
   useEffect(() => {
     if (!socket) return;
+
+    const handleStatusChange = ({ userId, isOnline }) => {
+      if (userId === otherUser._id) setPartnerOnline(isOnline);
+    };
+
+    // Fires on every (re)connection. On the very first connect this just re-does
+    // what fetchInitialHistory already did (harmless); after a dropped connection
+    // it catches up any messages the socket missed while offline — important on
+    // free-tier hosting where the backend can fully restart, wiping in-memory state.
+    const handleReconnect = () => {
+      if (mySecretKey) fetchInitialHistory({ merge: true });
+    };
+
     socket.on("receive_message", handleIncomingMessage);
     socket.on("message_delivered", handleDelivered);
     socket.on("message_reacted", handleReacted);
     socket.on("message_deleted_sync", handleDeletedSync);
     socket.on("view_once_opened_sync", handleViewOnceSync);
     socket.on("lock_state_sync", fetchLockStatus);
+    socket.on("user_status_changed", handleStatusChange);
+    socket.on("connect", handleReconnect);
     return () => {
       socket.off("receive_message", handleIncomingMessage);
       socket.off("message_delivered", handleDelivered);
@@ -87,6 +103,8 @@ const ChatScreen = ({ route, navigation }) => {
       socket.off("message_deleted_sync", handleDeletedSync);
       socket.off("view_once_opened_sync", handleViewOnceSync);
       socket.off("lock_state_sync", fetchLockStatus);
+      socket.off("user_status_changed", handleStatusChange);
+      socket.off("connect", handleReconnect);
     };
   }, [mySecretKey]);
 
@@ -146,12 +164,32 @@ const ChatScreen = ({ route, navigation }) => {
     if (mySecretKey) fetchInitialHistory();
   }, [mySecretKey]);
 
-  const fetchInitialHistory = async () => {
+  // merge:true is used on socket reconnect — it fetches just the latest page and
+  // stitches it onto whatever's already loaded (instead of wiping older, already
+  // paginated-in messages), deduping by _id.
+  const fetchInitialHistory = async ({ merge = false } = {}) => {
     try {
       const response = await api.get(`/chat/${otherUser._id}`, { params: { limit: PAGE_SIZE } });
       const decrypted = response.data.messages.map((m) => decryptForDisplay(m, mySecretKey));
-      setMessages(decrypted);
-      setHasMore(response.data.hasMore);
+
+      if (merge) {
+        setMessages((prev) => {
+          const freshIds = new Set(decrypted.map((m) => m._id));
+          const oldestFreshTime = decrypted.length
+            ? new Date(decrypted[decrypted.length - 1].createdAt).getTime()
+            : 0;
+          // Keep older messages we already had (from pagination) that the fresh
+          // page doesn't cover, drop anything the fresh page already re-fetched.
+          const olderKept = prev.filter(
+            (m) => !freshIds.has(m._id) && new Date(m.createdAt).getTime() < oldestFreshTime
+          );
+          return [...decrypted, ...olderKept];
+        });
+      } else {
+        setMessages(decrypted);
+        setHasMore(response.data.hasMore);
+      }
+
       if (socket) socket.emit("mark_read", { otherUserId: otherUser._id });
     } catch (error) {
       console.log("Error fetching chat history:", error.message);
@@ -566,7 +604,7 @@ const ChatScreen = ({ route, navigation }) => {
           <View style={{ marginLeft: 10, flex: 1 }}>
             <Text style={styles.headerTitle} numberOfLines={1}>{otherUser.username}</Text>
             <Text style={styles.headerStatus} numberOfLines={1}>
-              {otherUser.isOnline ? "online" : "offline"}{lockStatus?.locked ? " · 🔒 locked" : ""}
+              {partnerOnline ? "online" : "offline"}{lockStatus?.locked ? " · 🔒 locked" : ""}
             </Text>
           </View>
         </TouchableOpacity>

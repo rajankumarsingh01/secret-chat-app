@@ -41,6 +41,16 @@ const io = new Server(server, {
   cors: {
     origin: "*",
   },
+  // Buffers events (receive_message, etc.) for a socket that drops and reconnects
+  // within this window — e.g. phone going through a tunnel, WiFi<->mobile data
+  // switch, app briefly backgrounded — so nothing is silently lost.
+  connectionStateRecovery: {
+    maxDisconnectionDuration: 2 * 60 * 1000, // 2 minutes
+    // Must stay false: our auth middleware (io.use below) is what sets socket.user
+    // on every connection. If middlewares were skipped on recovery, socket.user
+    // would be undefined on the recovered socket and every handler would break.
+    skipMiddlewares: false,
+  },
 });
 
 socketHandler(io);

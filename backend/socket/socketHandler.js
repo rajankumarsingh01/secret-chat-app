@@ -3,8 +3,37 @@ const User = require("../models/User");
 const Message = require("../models/Message");
 const Conversation = require("../models/Conversation");
 const sendPushNotification = require("../utils/sendPushNotification");
+const pushCopy = require("../config/pushCopy");
 
 const onlineUsers = new Map();
+
+// Returns the userIds of everyone this user shares a Conversation with — i.e. their
+// paired contacts. Online/offline status should only ever go to these people, never
+// to every connected socket (that was leaking presence info to total strangers).
+const getContactIds = async (userId) => {
+  const conversations = await Conversation.find({ participants: userId }).select("participants");
+  const contactIds = new Set();
+  conversations.forEach((conv) => {
+    conv.participants.forEach((p) => {
+      const pid = p.toString();
+      if (pid !== userId) contactIds.add(pid);
+    });
+  });
+  return [...contactIds];
+};
+
+// Emits presence changes only to paired contacts (each user has already joined a
+// room named after their own userId — see socket.join(userId) below).
+const broadcastStatusToContacts = async (io, userId, isOnline) => {
+  try {
+    const contactIds = await getContactIds(userId);
+    contactIds.forEach((contactId) => {
+      io.to(contactId).emit("user_status_changed", { userId, isOnline });
+    });
+  } catch (error) {
+    console.log("broadcastStatusToContacts error:", error.message);
+  }
+};
 
 const socketHandler = (io) => {
   io.use(async (socket, next) => {
@@ -30,7 +59,7 @@ const socketHandler = (io) => {
     onlineUsers.set(userId, socket.id);
 
     await User.findByIdAndUpdate(userId, { isOnline: true, lastSeen: new Date() });
-    io.emit("user_status_changed", { userId, isOnline: true });
+    broadcastStatusToContacts(io, userId, true);
 
     console.log(`User connected: ${socket.user.username} (${socket.id})`);
 
@@ -88,7 +117,9 @@ const socketHandler = (io) => {
         if (!receiverIsConnected) {
           const receiverUser = await User.findById(receiver).select("pushToken");
           if (receiverUser?.pushToken) {
-            sendPushNotification(receiverUser.pushToken, socket.user.username, "New message", {
+            // Generic copy on purpose — never the sender's username or any message
+            // content, since this can sit on a locked screen. See config/pushCopy.js.
+            sendPushNotification(receiverUser.pushToken, pushCopy.title, pushCopy.body, {
               senderId: userId,
             });
           }
@@ -154,7 +185,7 @@ const socketHandler = (io) => {
     socket.on("disconnect", async () => {
       onlineUsers.delete(userId);
       await User.findByIdAndUpdate(userId, { isOnline: false, lastSeen: new Date() });
-      io.emit("user_status_changed", { userId, isOnline: false });
+      broadcastStatusToContacts(io, userId, false);
       console.log(`User disconnected: ${socket.user.username}`);
     });
   });
