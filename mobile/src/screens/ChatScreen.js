@@ -22,6 +22,7 @@ import api from "../services/api";
 import VoiceMessagePlayer, { formatDuration } from "../components/VoiceMessagePlayer";
 import { getSocket } from "../services/socket";
 import { useAuth } from "../context/AuthContext";
+import { useCall } from "../context/CallContext";
 import MessageBubble from "../components/MessageBubble";
 import { colors, spacing, radius } from "../theme";
 import { getOrCreateKeyPair, encryptMessage, decryptMessage } from "../crypto/e2e";
@@ -62,6 +63,7 @@ const ChatScreen = ({ route, navigation }) => {
   const recordingRef = useRef(null);
   const recordTimerRef = useRef(null);
   const socket = getSocket();
+  const { startCall } = useCall();
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
@@ -632,9 +634,17 @@ const ChatScreen = ({ route, navigation }) => {
 
         <View style={styles.headerActions}>
           {!initialReadOnly && (
-            <TouchableOpacity onPress={handleLockMenu} style={styles.headerIconBtn}>
-              <Text style={styles.headerIconText}>{lockStatus?.locked ? "🔐" : "🔓"}</Text>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity onPress={() => startCall(otherUser, "video")} style={styles.headerIconBtn}>
+                <Text style={styles.headerIconText}>📹</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => startCall(otherUser, "audio")} style={styles.headerIconBtn}>
+                <Text style={styles.headerIconText}>📞</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleLockMenu} style={styles.headerIconBtn}>
+                <Text style={styles.headerIconText}>{lockStatus?.locked ? "🔐" : "🔓"}</Text>
+              </TouchableOpacity>
+            </>
           )}
           <TouchableOpacity onPress={() => navigation.navigate("Profile")} style={styles.headerIconBtn}>
             <Text style={styles.headerIconText}>⋮</Text>

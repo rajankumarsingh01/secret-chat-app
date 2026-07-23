@@ -15,7 +15,8 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Used to record voice messages you send in chats."
+        "NSMicrophoneUsageDescription": "Used to record voice messages and for voice/video calls.",
+        "NSCameraUsageDescription": "Used for video calls."
       }
     },
     "android": {
@@ -26,7 +27,10 @@
       },
       "edgeToEdgeEnabled": true,
       "permissions": [
-        "RECORD_AUDIO"
+        "RECORD_AUDIO",
+        "CAMERA",
+        "MODIFY_AUDIO_SETTINGS",
+        "BLUETOOTH"
       ]
     },
     "web": {
@@ -39,6 +43,13 @@
         "expo-av",
         {
           "microphonePermission": "Used to record voice messages you send in chats."
+        }
+      ],
+      [
+        "react-native-webrtc",
+        {
+          "cameraPermission": "Used for video calls.",
+          "microphonePermission": "Used for voice and video calls."
         }
       ]
     ],

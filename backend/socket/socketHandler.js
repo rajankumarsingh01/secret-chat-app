@@ -7,6 +7,11 @@ const pushCopy = require("../config/pushCopy");
 
 const onlineUsers = new Map();
 
+// Tracks who is currently on a call: userId -> otherUserId. Used only to reject
+// a second incoming call with "busy" instead of letting it ring into an already
+// occupied line. Cleared on call_end / call_reject / disconnect.
+const activeCalls = new Map();
+
 const getContactIds = async (userId) => {
   const conversations = await Conversation.find({ participants: userId }).select("participants");
   const contactIds = new Set();
@@ -278,10 +283,68 @@ const socketHandler = (io) => {
       socket.to(groupRoom(conversationId)).emit("group_user_stop_typing", { conversationId, userId });
     });
 
+  // ── WebRTC call signaling (audio/video, 1-to-1) ─────────────────────────
+    // The server never touches media — it only relays SDP offers/answers and
+    // ICE candidates between the two peers, exactly like it relays chat events.
+
+    socket.on("call_user", ({ to, offer, callType }) => {
+      if (!to || !offer) return;
+
+      if (!onlineUsers.has(to)) {
+        return socket.emit("call_failed", { reason: "offline" });
+      }
+      if (activeCalls.has(to) || activeCalls.has(userId)) {
+        return socket.emit("call_failed", { reason: "busy" });
+      }
+
+      activeCalls.set(userId, to);
+      activeCalls.set(to, userId);
+
+      io.to(to).emit("incoming_call", {
+        from: { _id: userId, username: socket.user.username, profilePicUrl: socket.user.profilePicUrl },
+        offer,
+        callType: callType === "video" ? "video" : "audio",
+      });
+    });
+
+    socket.on("call_answer", ({ to, answer }) => {
+      if (!to || !answer) return;
+      io.to(to).emit("call_answered", { answer });
+    });
+
+    socket.on("ice_candidate", ({ to, candidate }) => {
+      if (!to || !candidate) return;
+      io.to(to).emit("ice_candidate", { candidate, from: userId });
+    });
+
+    socket.on("call_reject", ({ to }) => {
+      if (!to) return;
+      activeCalls.delete(userId);
+      activeCalls.delete(to);
+      io.to(to).emit("call_rejected");
+    });
+
+    socket.on("call_end", ({ to }) => {
+      if (!to) return;
+      activeCalls.delete(userId);
+      activeCalls.delete(to);
+      io.to(to).emit("call_ended");
+    });
+
     socket.on("disconnect", async () => {
       onlineUsers.delete(userId);
       await User.findByIdAndUpdate(userId, { isOnline: false, lastSeen: new Date() });
       broadcastStatusToContacts(io, userId, false);
+
+      // If this user was mid-call, tell the other side immediately instead of
+      // leaving them stuck on a ringing/connected screen forever.
+      const partnerId = activeCalls.get(userId);
+      if (partnerId) {
+        activeCalls.delete(userId);
+        activeCalls.delete(partnerId);
+        io.to(partnerId).emit("call_ended");
+      }
+
       console.log(`User disconnected: ${socket.user.username}`);
     });
   });
