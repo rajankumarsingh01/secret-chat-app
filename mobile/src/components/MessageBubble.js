@@ -5,7 +5,6 @@ import { colors, radius } from "../theme";
 import VoiceMessagePlayer from "./VoiceMessagePlayer";
 
 const Tick = ({ status }) => {
-  // status: "sent" | "delivered" | "read"
   if (status === "read") return <Text style={styles.tickRead}>✓✓</Text>;
   if (status === "delivered") return <Text style={styles.tickGray}>✓✓</Text>;
   return <Text style={styles.tickGray}>✓</Text>;
@@ -20,12 +19,10 @@ const replyPreviewLabel = (replyTo) => {
   return replyTo.text || "...";
 };
 
-const MessageBubble = ({ message, isOwnMessage, onReply, onDelete, onReact, onOpenViewOnce }) => {
+const MessageBubble = ({ message, isOwnMessage, onReply, onDelete, onReact, onOpenViewOnce, senderLabel }) => {
   const status = message.isRead ? "read" : message.isDelivered ? "delivered" : "sent";
 
   const handleLongPress = () => {
-    // View-once media that hasn't been opened yet can't be reacted to/replied to
-    // from the sender side without giving away its contents indirectly.
     if (message.viewOnce && !message.viewOnceOpened) {
       const options = [];
       if (isOwnMessage) {
@@ -50,6 +47,9 @@ const MessageBubble = ({ message, isOwnMessage, onReply, onDelete, onReact, onOp
     Alert.alert("Message options", "", options);
   };
 
+  const SenderLabel = () =>
+    senderLabel && !isOwnMessage ? <Text style={styles.senderLabel}>{senderLabel}</Text> : null;
+
   if (message.deletedForEveryone) {
     return (
       <View style={[styles.row, isOwnMessage ? styles.rowOwn : styles.rowOther]}>
@@ -60,7 +60,6 @@ const MessageBubble = ({ message, isOwnMessage, onReply, onDelete, onReact, onOp
     );
   }
 
-  // ── View-once media ──────────────────────────────────────────────────────
   if (message.viewOnce) {
     if (message.viewOnceOpened) {
       return (
@@ -94,6 +93,7 @@ const MessageBubble = ({ message, isOwnMessage, onReply, onDelete, onReact, onOp
 
     return (
       <View style={[styles.row, styles.rowOther]}>
+        <SenderLabel />
         <TouchableOpacity
           activeOpacity={0.85}
           onPress={() => onOpenViewOnce(message)}
@@ -109,6 +109,7 @@ const MessageBubble = ({ message, isOwnMessage, onReply, onDelete, onReact, onOp
 
   return (
     <View style={[styles.row, isOwnMessage ? styles.rowOwn : styles.rowOther]}>
+      <SenderLabel />
       <TouchableOpacity
         activeOpacity={0.85}
         onLongPress={handleLongPress}
@@ -129,9 +130,7 @@ const MessageBubble = ({ message, isOwnMessage, onReply, onDelete, onReact, onOp
           </View>
         ) : null}
 
-        {message.imageUrl ? (
-          <Image source={{ uri: message.imageUrl }} style={styles.image} />
-        ) : null}
+        {message.imageUrl ? <Image source={{ uri: message.imageUrl }} style={styles.image} /> : null}
         {message.audioUrl ? (
           <VoiceMessagePlayer uri={message.audioUrl} duration={message.audioDuration} isOwnMessage={isOwnMessage} />
         ) : null}
@@ -160,6 +159,7 @@ const styles = StyleSheet.create({
   row: { width: "100%", marginVertical: 2 },
   rowOwn: { alignItems: "flex-end" },
   rowOther: { alignItems: "flex-start" },
+  senderLabel: { color: colors.accentSoft, fontSize: 12.5, fontWeight: "700", marginLeft: 14, marginBottom: 2 },
   bubble: {
     maxWidth: "80%",
     marginHorizontal: 10,

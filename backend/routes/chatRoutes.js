@@ -2,6 +2,8 @@ const express = require("express");
 const router = express.Router();
 const {
   getMessages,
+  getGroupMessages,
+  getContacts,
   sendMessage,
   uploadChatImage,
   uploadVoiceMessage,
@@ -15,6 +17,8 @@ const { uploadAudio } = require("../middleware/upload");
 const { uploadLimiter } = require("../middleware/rateLimiter");
 
 router.get("/conversations", protect, getConversations);
+router.get("/contacts", protect, getContacts);
+router.get("/group/:conversationId/messages", protect, getGroupMessages);
 router.get("/:otherUserId", protect, getMessages);
 router.post("/", protect, sendMessage);
 router.post("/upload-image", protect, uploadLimiter, upload.single("image"), uploadChatImage);

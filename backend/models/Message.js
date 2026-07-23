@@ -7,10 +7,20 @@ const messageSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+    // For 1-1 messages this is required. For group messages we use `conversation`
+    // + `recipientCiphers` instead (a group has no single receiver).
     receiver: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      required: function () {
+        return !this.conversation;
+      },
+    },
+    // Set ONLY for group messages — points at the group's Conversation doc.
+    conversation: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Conversation",
+      default: null,
     },
     cipherText: {
       type: String,
@@ -20,6 +30,26 @@ const messageSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    // Group text messages (Phase 5A): since our E2E is pairwise (nacl.box), the
+    // sender encrypts the same plaintext once per group member's public key
+    // (including their own, so they can re-read their own sent messages later).
+    // Each entry is independently decryptable only by the matching `user`.
+    recipientCiphers: [
+      {
+        user: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        cipherText: String,
+        nonce: String,
+        _id: false,
+      },
+    ],
+    // Group read receipts: who has marked this message read. (1-1 chats keep
+    // using the older `isRead` boolean below — unchanged.)
+    readBy: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
     imageUrl: {
       type: String,
       default: "",
@@ -29,19 +59,13 @@ const messageSchema = new mongoose.Schema(
       default: "",
     },
     audioDuration: {
-      // duration of the voice note in seconds (client-measured)
       type: Number,
       default: 0,
     },
-    // Cloudinary public_id for whichever media (image/audio) this message carries.
-    // Needed so we can actually delete the asset from Cloudinary on view-once open
-    // or "delete for everyone", instead of just hiding the URL.
     mediaPublicId: {
       type: String,
       default: "",
     },
-    // "Read once" media — once the receiver opens it, the media is deleted
-    // from the server/Cloudinary for both sides.
     viewOnce: {
       type: Boolean,
       default: false,
@@ -87,5 +111,6 @@ const messageSchema = new mongoose.Schema(
 
 messageSchema.index({ sender: 1, receiver: 1, createdAt: -1 });
 messageSchema.index({ receiver: 1, sender: 1, createdAt: -1 });
+messageSchema.index({ conversation: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Message", messageSchema);

@@ -39,6 +39,31 @@ const conversationSchema = new mongoose.Schema(
       type: Number,
       default: null,
     },
+    // ── Group chat fields (Phase 5A) ──────────────────────────────────────
+    isGroup: {
+      type: Boolean,
+      default: false,
+    },
+    groupName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    groupAvatarUrl: {
+      type: String,
+      default: "",
+    },
+    groupAdmins: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
   },
   { timestamps: true }
 );

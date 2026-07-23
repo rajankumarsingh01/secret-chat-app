@@ -10,6 +10,7 @@ import {
   StatusBar,
   TextInput,
   RefreshControl,
+  Alert,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import api from "../services/api";
@@ -18,7 +19,6 @@ import { useAuth } from "../context/AuthContext";
 import { colors, spacing, radius, typography } from "../theme";
 
 const Tick = ({ status }) => {
-  // status: "sent" | "delivered" | "read"
   if (status === "read") return <Text style={styles.tickRead}>✓✓</Text>;
   if (status === "delivered") return <Text style={styles.tickGray}>✓✓</Text>;
   return <Text style={styles.tickGray}>✓</Text>;
@@ -55,10 +55,14 @@ const ChatListScreen = ({ navigation }) => {
     socket.on("receive_message", refresh);
     socket.on("messages_seen", refresh);
     socket.on("lock_state_sync", refresh);
+    socket.on("receive_group_message", refresh);
+    socket.on("group_messages_seen", refresh);
     return () => {
       socket.off("receive_message", refresh);
       socket.off("messages_seen", refresh);
       socket.off("lock_state_sync", refresh);
+      socket.off("receive_group_message", refresh);
+      socket.off("group_messages_seen", refresh);
     };
   }, [socket]);
 
@@ -81,9 +85,10 @@ const ChatListScreen = ({ navigation }) => {
 
   const initials = (name) => name?.charAt(0).toUpperCase();
 
-  const previewText = (lastMessage, isOwn) => {
+  const previewText = (lastMessage, isOwn, isGroup) => {
     if (!lastMessage) return "Say hi 👋";
     if (lastMessage.deletedForEveryone) return "🚫 Message deleted";
+    if (isGroup) return "🔒 Encrypted message";
     if (lastMessage.viewOnce && lastMessage.viewOnceOpened) return "🔥 Viewed";
     if (lastMessage.viewOnce && lastMessage.audioUrl) return "🔥 View once voice message";
     if (lastMessage.viewOnce && lastMessage.imageUrl) return "🔥 View once photo";
@@ -113,7 +118,10 @@ const ChatListScreen = ({ navigation }) => {
   const filteredConversations = useMemo(() => {
     if (!searchQuery.trim()) return conversations;
     const q = searchQuery.trim().toLowerCase();
-    return conversations.filter((item) => item.partner.username?.toLowerCase().includes(q));
+    return conversations.filter((item) => {
+      const name = item.isGroup ? item.groupName : item.partner?.username;
+      return name?.toLowerCase().includes(q);
+    });
   }, [conversations, searchQuery]);
 
   const toggleSearch = () => {
@@ -121,11 +129,18 @@ const ChatListScreen = ({ navigation }) => {
     setSearchOpen((prev) => !prev);
   };
 
+  const handleFabPress = () => {
+    Alert.alert("Start something new", "", [
+      { text: "New chat", onPress: () => navigation.navigate("AddContact") },
+      { text: "New group", onPress: () => navigation.navigate("CreateGroup") },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.headerBg} />
 
-      {/* Top App Bar */}
       <View style={[styles.appBar, { paddingTop: insets.top + spacing.sm }]}>
         <View style={styles.appBarRow}>
           <Text style={styles.appBarTitle}>Chats</Text>
@@ -150,7 +165,7 @@ const ChatListScreen = ({ navigation }) => {
             <Text style={styles.searchIcon}>🔍</Text>
             <TextInput
               style={styles.searchInput}
-              placeholder="Search contacts"
+              placeholder="Search contacts and groups"
               placeholderTextColor={colors.textFaint}
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -165,7 +180,6 @@ const ChatListScreen = ({ navigation }) => {
         )}
       </View>
 
-      {/* List */}
       {initialLoading ? (
         <View style={{ paddingTop: spacing.sm }}>
           {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -189,6 +203,43 @@ const ChatListScreen = ({ navigation }) => {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
           }
           renderItem={({ item }) => {
+            if (item.isGroup) {
+              return (
+                <TouchableOpacity
+                  style={styles.userRow}
+                  activeOpacity={0.6}
+                  onPress={() => navigation.navigate("GroupChat", { conversationId: item.conversationId })}
+                >
+                  <View style={styles.avatarPlaceholder}>
+                    <Text style={styles.avatarInitial}>{initials(item.groupName)}</Text>
+                  </View>
+                  <View style={styles.middleCol}>
+                    <View style={styles.rowTop}>
+                      <Text style={styles.username} numberOfLines={1}>{item.groupName}</Text>
+                      {item.lastMessage && (
+                        <Text style={[styles.time, item.unreadCount > 0 && styles.timeUnread]}>
+                          {formatTime(item.lastMessage.createdAt)}
+                        </Text>
+                      )}
+                    </View>
+                    <View style={styles.previewRow}>
+                      <Text
+                        style={[styles.preview, item.unreadCount > 0 && styles.previewUnread]}
+                        numberOfLines={1}
+                      >
+                        {previewText(item.lastMessage, false, true)}
+                      </Text>
+                      {item.unreadCount > 0 && (
+                        <View style={styles.badge}>
+                          <Text style={styles.badgeText}>{item.unreadCount > 99 ? "99+" : item.unreadCount}</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            }
+
             const isOwnLastMessage = item.lastMessage?.sender === user?._id;
             const status = isOwnLastMessage ? lastMessageStatus(item.lastMessage) : null;
             return (
@@ -243,7 +294,7 @@ const ChatListScreen = ({ navigation }) => {
                       style={[styles.preview, item.unreadCount > 0 && !item.readOnly && styles.previewUnread]}
                       numberOfLines={1}
                     >
-                      {item.readOnly ? "Read-only — locked elsewhere" : previewText(item.lastMessage, isOwnLastMessage)}
+                      {item.readOnly ? "Read-only — locked elsewhere" : previewText(item.lastMessage, isOwnLastMessage, false)}
                     </Text>
                     {item.unreadCount > 0 && !item.readOnly && (
                       <View style={styles.badge}>
@@ -258,11 +309,10 @@ const ChatListScreen = ({ navigation }) => {
         />
       )}
 
-      {/* Floating Action Button — new chat */}
       <TouchableOpacity
         style={[styles.fab, { bottom: Math.max(insets.bottom, spacing.md) + spacing.lg }]}
         activeOpacity={0.85}
-        onPress={() => navigation.navigate("AddContact")}
+        onPress={handleFabPress}
       >
         <Text style={styles.fabIcon}>💬</Text>
       </TouchableOpacity>

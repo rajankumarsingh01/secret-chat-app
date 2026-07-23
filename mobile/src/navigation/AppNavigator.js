@@ -17,6 +17,9 @@ import ChatScreen from "../screens/ChatScreen";
 import ProfileScreen from "../screens/ProfileScreen";
 import DecoyChatListScreen from "../screens/DecoyChatListScreen";
 import DecoyChatScreen from "../screens/DecoyChatScreen";
+import CreateGroupScreen from "../screens/CreateGroupScreen";
+import GroupChatScreen from "../screens/GroupChatScreen";
+import GroupInfoScreen from "../screens/GroupInfoScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -57,6 +60,9 @@ const AppNavigator = () => {
         <Stack.Screen name="Profile" component={ProfileScreen} />
         <Stack.Screen name="DecoyChatList" component={DecoyChatListScreen} />
         <Stack.Screen name="DecoyChat" component={DecoyChatScreen} />
+        <Stack.Screen name="CreateGroup" component={CreateGroupScreen} />
+        <Stack.Screen name="GroupChat" component={GroupChatScreen} />
+        <Stack.Screen name="GroupInfo" component={GroupInfoScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

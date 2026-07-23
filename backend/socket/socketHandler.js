@@ -7,9 +7,6 @@ const pushCopy = require("../config/pushCopy");
 
 const onlineUsers = new Map();
 
-// Returns the userIds of everyone this user shares a Conversation with — i.e. their
-// paired contacts. Online/offline status should only ever go to these people, never
-// to every connected socket (that was leaking presence info to total strangers).
 const getContactIds = async (userId) => {
   const conversations = await Conversation.find({ participants: userId }).select("participants");
   const contactIds = new Set();
@@ -22,8 +19,6 @@ const getContactIds = async (userId) => {
   return [...contactIds];
 };
 
-// Emits presence changes only to paired contacts (each user has already joined a
-// room named after their own userId — see socket.join(userId) below).
 const broadcastStatusToContacts = async (io, userId, isOnline) => {
   try {
     const contactIds = await getContactIds(userId);
@@ -34,6 +29,8 @@ const broadcastStatusToContacts = async (io, userId, isOnline) => {
     console.log("broadcastStatusToContacts error:", error.message);
   }
 };
+
+const groupRoom = (conversationId) => `group_${conversationId}`;
 
 const socketHandler = (io) => {
   io.use(async (socket, next) => {
@@ -65,6 +62,15 @@ const socketHandler = (io) => {
 
     socket.join(userId);
 
+    // Join every group room this user belongs to, so group messages/events
+    // reach them in real time without joining manually per-chat-open.
+    try {
+      const myGroups = await Conversation.find({ participants: userId, isGroup: true }).select("_id");
+      myGroups.forEach((conv) => socket.join(groupRoom(conv._id)));
+    } catch (error) {
+      console.log("Error joining group rooms:", error.message);
+    }
+
     socket.on("send_message", async (data) => {
       try {
         const {
@@ -83,7 +89,10 @@ const socketHandler = (io) => {
           return socket.emit("error_message", { message: "Invalid message data" });
         }
 
-        const conversation = await Conversation.findOne({ participants: { $all: [userId, receiver] } });
+        const conversation = await Conversation.findOne({
+          isGroup: { $ne: true },
+          participants: { $all: [userId, receiver] },
+        });
         if (!conversation) {
           return socket.emit("error_message", { message: "You are not connected with this user" });
         }
@@ -117,8 +126,6 @@ const socketHandler = (io) => {
         if (!receiverIsConnected) {
           const receiverUser = await User.findById(receiver).select("pushToken");
           if (receiverUser?.pushToken) {
-            // Generic copy on purpose — never the sender's username or any message
-            // content, since this can sit on a locked screen. See config/pushCopy.js.
             sendPushNotification(receiverUser.pushToken, pushCopy.title, pushCopy.body, {
               senderId: userId,
             });
@@ -131,6 +138,49 @@ const socketHandler = (io) => {
       }
     });
 
+    // ── Group messaging (Phase 5A) ──────────────────────────────────────────
+    // Client sends the plaintext already encrypted N times — once per group
+    // member's public key (see mobile crypto/e2e.js encryptForGroup).
+    socket.on("send_group_message", async (data) => {
+      try {
+        const { conversationId, recipientCiphers, replyTo } = data;
+
+        if (!conversationId || !Array.isArray(recipientCiphers) || recipientCiphers.length === 0) {
+          return socket.emit("error_message", { message: "Invalid group message data" });
+        }
+
+        const conversation = await Conversation.findOne({
+          _id: conversationId,
+          isGroup: true,
+          participants: userId,
+        });
+        if (!conversation) {
+          return socket.emit("error_message", { message: "You're not a member of this group" });
+        }
+
+        let message = await Message.create({
+          sender: userId,
+          conversation: conversationId,
+          recipientCiphers,
+          replyTo: replyTo || null,
+        });
+
+        message = await message.populate("sender", "username profilePicUrl");
+        message = await message.populate("replyTo", "recipientCiphers sender deletedForEveryone");
+
+        io.to(groupRoom(conversationId)).emit("receive_group_message", message);
+      } catch (error) {
+        socket.emit("error_message", { message: error.message });
+      }
+    });
+
+    // Lets a socket that's already connected join a brand-new group's room
+    // right after creating it (creator won't have joined it at connect-time
+    // since the group didn't exist yet).
+    socket.on("join_group_room", ({ conversationId }) => {
+      if (conversationId) socket.join(groupRoom(conversationId));
+    });
+
     socket.on("mark_read", async ({ otherUserId }) => {
       try {
         await Message.updateMany(
@@ -140,6 +190,18 @@ const socketHandler = (io) => {
         io.to(otherUserId).emit("messages_seen", { by: userId });
       } catch (error) {
         console.log("mark_read error:", error.message);
+      }
+    });
+
+    socket.on("mark_group_read", async ({ conversationId }) => {
+      try {
+        await Message.updateMany(
+          { conversation: conversationId, sender: { $ne: userId }, readBy: { $ne: userId } },
+          { $addToSet: { readBy: userId } }
+        );
+        io.to(groupRoom(conversationId)).emit("group_messages_seen", { conversationId, by: userId });
+      } catch (error) {
+        console.log("mark_group_read error:", error.message);
       }
     });
 
@@ -158,26 +220,37 @@ const socketHandler = (io) => {
       }
     });
 
+    socket.on("react_group_message", async ({ messageId, emoji, conversationId }) => {
+      try {
+        const message = await Message.findById(messageId);
+        if (!message) return;
+
+        message.reaction = message.reaction === emoji ? "" : emoji;
+        await message.save();
+
+        io.to(groupRoom(conversationId)).emit("group_message_reacted", { messageId, reaction: message.reaction });
+      } catch (error) {
+        console.log("react_group_message error:", error.message);
+      }
+    });
+
     socket.on("message_deleted", ({ messageId, otherUserId }) => {
       io.to(otherUserId).emit("message_deleted_sync", { messageId });
     });
 
-    // Sender/receiver both need to know a view-once message is gone the instant
-    // it's opened, so it can't be re-shown from the other device's cache either.
+    socket.on("group_message_deleted", ({ messageId, conversationId }) => {
+      io.to(groupRoom(conversationId)).emit("group_message_deleted_sync", { messageId });
+    });
+
     socket.on("view_once_opened", ({ messageId, otherUserId }) => {
       io.to(otherUserId).emit("view_once_opened_sync", { messageId });
       io.to(userId).emit("view_once_opened_sync", { messageId });
     });
 
-    // Notify the partner in real time that a lock/unlock action happened — they should refresh state
     socket.on("lock_state_changed", ({ otherUserId }) => {
       io.to(otherUserId).emit("lock_state_sync");
     });
 
-    // Fired when this user takes a screenshot inside an unlocked chat. We never see
-    // the screenshot itself — the phone OS just tells the app "a screenshot happened"
-    // — we only relay that fact to the other participant so they know their screen
-    // was captured. No image, no content, ever leaves the device.
     socket.on("screenshot_taken", ({ otherUserId }) => {
       if (!otherUserId) return;
       io.to(otherUserId).emit("screenshot_notice", { by: userId });
@@ -189,6 +262,20 @@ const socketHandler = (io) => {
 
     socket.on("stop_typing", ({ receiver }) => {
       io.to(receiver).emit("user_stop_typing", { senderId: userId });
+    });
+
+    // socket.to() (not io.to()) excludes the sender's own socket automatically —
+    // exactly what we want for a "X is typing" indicator.
+    socket.on("group_typing", ({ conversationId }) => {
+      socket.to(groupRoom(conversationId)).emit("group_user_typing", {
+        conversationId,
+        userId,
+        username: socket.user.username,
+      });
+    });
+
+    socket.on("group_stop_typing", ({ conversationId }) => {
+      socket.to(groupRoom(conversationId)).emit("group_user_stop_typing", { conversationId, userId });
     });
 
     socket.on("disconnect", async () => {

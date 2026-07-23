@@ -13,6 +13,7 @@ const adminRoutes = require("./routes/adminRoutes");
 const pairingRoutes = require("./routes/pairingRoutes");
 const keysRoutes = require("./routes/keysRoutes");
 const lockRoutes = require("./routes/lockRoutes");
+const groupRoutes = require("./routes/groupRoutes"); // ← NEW
 const socketHandler = require("./socket/socketHandler");
 const { generalLimiter } = require("./middleware/rateLimiter");
 
@@ -34,6 +35,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/pairing", pairingRoutes);
 app.use("/api/keys", keysRoutes);
 app.use("/api/lock", lockRoutes);
+app.use("/api/groups", groupRoutes); // ← NEW
 
 const server = http.createServer(app);
 
@@ -41,14 +43,8 @@ const io = new Server(server, {
   cors: {
     origin: "*",
   },
-  // Buffers events (receive_message, etc.) for a socket that drops and reconnects
-  // within this window — e.g. phone going through a tunnel, WiFi<->mobile data
-  // switch, app briefly backgrounded — so nothing is silently lost.
   connectionStateRecovery: {
-    maxDisconnectionDuration: 2 * 60 * 1000, // 2 minutes
-    // Must stay false: our auth middleware (io.use below) is what sets socket.user
-    // on every connection. If middlewares were skipped on recovery, socket.user
-    // would be undefined on the recovered socket and every handler would break.
+    maxDisconnectionDuration: 2 * 60 * 1000,
     skipMiddlewares: false,
   },
 });
