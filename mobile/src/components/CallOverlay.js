@@ -5,9 +5,19 @@
 import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Modal, Image } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { RTCView } from "react-native-webrtc";
 import { useCall } from "../context/CallContext";
 import { colors, spacing, radius } from "../theme";
+
+// Same defensive require as CallContext — RTCView's native module doesn't
+// exist in Expo Go. callState never leaves "idle" there (CallContext blocks
+// it), so this overlay never actually needs to render RTCView in that case,
+// but we still guard the import itself so it can't crash app boot.
+let RTCView = View;
+try {
+  RTCView = require("react-native-webrtc").RTCView;
+} catch (error) {
+  // stays as plain View fallback
+}
 
 const formatDuration = (sec) => {
   const m = Math.floor(sec / 60).toString().padStart(2, "0");

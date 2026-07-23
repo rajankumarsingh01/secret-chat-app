@@ -4,16 +4,28 @@
 // the SDP offer/answer + ICE candidates via the existing Socket.IO connection,
 // so there's no extra server cost.
 import React, { createContext, useContext, useRef, useState, useCallback, useEffect } from "react";
-import { Platform } from "react-native";
-import {
-  RTCPeerConnection,
-  RTCSessionDescription,
-  RTCIceCandidate,
-  mediaDevices,
-} from "react-native-webrtc";
+import { Alert } from "react-native";
 import { TURN_URL, TURN_USERNAME, TURN_CREDENTIAL } from "@env";
 import { getSocket } from "../services/socket";
 import { useAuth } from "./AuthContext";
+
+// react-native-webrtc's native module doesn't exist inside Expo Go (it only
+// exists in a real dev-client / production build). Importing it there throws
+// synchronously and would crash the ENTIRE app before it even renders. So we
+// require it defensively — if it's missing, calling is simply disabled and
+// everything else in the app keeps working normally.
+let RTCPeerConnection, RTCSessionDescription, RTCIceCandidate, mediaDevices;
+let webrtcAvailable = true;
+try {
+  const webrtc = require("react-native-webrtc");
+  RTCPeerConnection = webrtc.RTCPeerConnection;
+  RTCSessionDescription = webrtc.RTCSessionDescription;
+  RTCIceCandidate = webrtc.RTCIceCandidate;
+  mediaDevices = webrtc.mediaDevices;
+} catch (error) {
+  webrtcAvailable = false;
+  console.log("react-native-webrtc not available (Expo Go?) — calling disabled:", error.message);
+}
 
 const CallContext = createContext();
 
@@ -108,6 +120,13 @@ export const CallProvider = ({ children }) => {
 
   // ── Outgoing call ─────────────────────────────────────────────────────
   const startCall = useCallback(async (targetUser, type = "audio") => {
+    if (!webrtcAvailable) {
+      Alert.alert(
+        "Calling not available",
+        "Voice/video call sirf dev-client ya installed build me kaam karta hai — Expo Go me nahi. Pehle 'eas build --profile development' se build banao."
+      );
+      return;
+    }
     try {
       const stream = await mediaDevices.getUserMedia({
         audio: true,
@@ -134,6 +153,7 @@ export const CallProvider = ({ children }) => {
 
   // ── Incoming call ────────────────────────────────────────────────────
   const handleIncomingCall = useCallback(({ from, offer, callType: type }) => {
+    if (!webrtcAvailable) return; // Expo Go — silently ignore, can't render/answer anyway
     // Already on a call somewhere else (shouldn't normally happen — server
     // also guards this) — just ignore.
     if (callState !== "idle") return;

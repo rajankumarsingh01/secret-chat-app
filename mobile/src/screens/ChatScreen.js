@@ -15,6 +15,7 @@ import {
   Modal,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as ScreenCapture from "expo-screen-capture";
 import { Audio } from "expo-av";
@@ -63,8 +64,8 @@ const ChatScreen = ({ route, navigation }) => {
   const recordingRef = useRef(null);
   const recordTimerRef = useRef(null);
   const socket = getSocket();
-  const { startCall } = useCall();
   const insets = useSafeAreaInsets();
+  const { startCall } = useCall();
 
   useEffect(() => {
     init();
@@ -613,7 +614,7 @@ const ChatScreen = ({ route, navigation }) => {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.replace("Calculator")} style={styles.backBtn}>
-          <Text style={styles.backText}>‹</Text>
+          <Ionicons name="chevron-back" size={26} color={colors.text} />
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.headerCenter} onPress={() => navigation.navigate("Profile")} activeOpacity={0.7}>
@@ -627,7 +628,7 @@ const ChatScreen = ({ route, navigation }) => {
           <View style={{ marginLeft: 10, flex: 1 }}>
             <Text style={styles.headerTitle} numberOfLines={1}>{otherUser.username}</Text>
             <Text style={styles.headerStatus} numberOfLines={1}>
-              {partnerOnline ? "online" : "offline"}{lockStatus?.locked ? " · 🔒 locked" : ""}
+              {partnerOnline ? "online" : "offline"}{lockStatus?.locked ? " · locked" : ""}
             </Text>
           </View>
         </TouchableOpacity>
@@ -636,18 +637,22 @@ const ChatScreen = ({ route, navigation }) => {
           {!initialReadOnly && (
             <>
               <TouchableOpacity onPress={() => startCall(otherUser, "video")} style={styles.headerIconBtn}>
-                <Text style={styles.headerIconText}>📹</Text>
+                <Ionicons name="videocam" size={23} color={colors.text} />
               </TouchableOpacity>
               <TouchableOpacity onPress={() => startCall(otherUser, "audio")} style={styles.headerIconBtn}>
-                <Text style={styles.headerIconText}>📞</Text>
+                <Ionicons name="call" size={20} color={colors.text} />
               </TouchableOpacity>
               <TouchableOpacity onPress={handleLockMenu} style={styles.headerIconBtn}>
-                <Text style={styles.headerIconText}>{lockStatus?.locked ? "🔐" : "🔓"}</Text>
+                <Ionicons
+                  name={lockStatus?.locked ? "lock-closed" : "lock-open"}
+                  size={19}
+                  color={lockStatus?.locked ? colors.accentSoft : colors.text}
+                />
               </TouchableOpacity>
             </>
           )}
           <TouchableOpacity onPress={() => navigation.navigate("Profile")} style={styles.headerIconBtn}>
-            <Text style={styles.headerIconText}>⋮</Text>
+            <Ionicons name="ellipsis-vertical" size={20} color={colors.text} />
           </TouchableOpacity>
         </View>
       </View>
@@ -711,7 +716,7 @@ const ChatScreen = ({ route, navigation }) => {
               </Text>
             </View>
             <TouchableOpacity onPress={() => setReplyingTo(null)} style={styles.replyCancelBtn}>
-              <Text style={styles.replyCancelText}>✕</Text>
+              <Ionicons name="close" size={18} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
         ) : null}
@@ -723,14 +728,14 @@ const ChatScreen = ({ route, navigation }) => {
         ) : isRecording ? (
           <View style={[styles.recordingRow, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
             <TouchableOpacity onPress={cancelRecording} style={styles.recordingCancelBtn}>
-              <Text style={styles.recordingCancelText}>✕</Text>
+              <Ionicons name="close" size={22} color={colors.textMuted} />
             </TouchableOpacity>
             <View style={styles.recordingPill}>
               <View style={styles.recordingDot} />
               <Text style={styles.recordingText}>Recording… {formatDuration(recordSeconds)}</Text>
             </View>
             <TouchableOpacity onPress={handleMicPress} style={styles.sendButton} activeOpacity={0.8}>
-              <Text style={styles.sendButtonText}>⏹</Text>
+              <Ionicons name="stop" size={20} color="#fff" />
             </TouchableOpacity>
           </View>
         ) : (
@@ -739,11 +744,15 @@ const ChatScreen = ({ route, navigation }) => {
               onPress={toggleViewOnceMode}
               style={[styles.viewOnceToggle, viewOnceMode && styles.viewOnceToggleActive]}
             >
-              <Text style={styles.viewOnceToggleText}>🔥</Text>
+              <Ionicons name="flame" size={20} color={viewOnceMode ? colors.accent : colors.textMuted} />
             </TouchableOpacity>
             <View style={styles.inputPill}>
               <TouchableOpacity onPress={pickAndSendImage} disabled={uploading} style={styles.attachBtn}>
-                <Text style={styles.attachBtnText}>{uploading ? "…" : "📎"}</Text>
+                {uploading ? (
+                  <Text style={styles.attachBtnText}>…</Text>
+                ) : (
+                  <Ionicons name="attach" size={22} color={colors.textMuted} />
+                )}
               </TouchableOpacity>
               <TextInput
                 style={styles.input}
@@ -755,7 +764,7 @@ const ChatScreen = ({ route, navigation }) => {
               />
               {!text.trim() && (
                 <TouchableOpacity onPress={pickAndSendImage} disabled={uploading} style={styles.cameraBtn}>
-                  <Text style={styles.attachBtnText}>📷</Text>
+                  <Ionicons name="camera" size={21} color={colors.textMuted} />
                 </TouchableOpacity>
               )}
             </View>
@@ -764,7 +773,7 @@ const ChatScreen = ({ route, navigation }) => {
               style={styles.sendButton}
               activeOpacity={0.8}
             >
-              <Text style={styles.sendButtonText}>{text.trim() ? "➤" : "🎤"}</Text>
+              <Ionicons name={text.trim() ? "send" : "mic"} size={20} color="#fff" />
             </TouchableOpacity>
           </View>
         )}
@@ -773,7 +782,7 @@ const ChatScreen = ({ route, navigation }) => {
       <Modal visible={!!viewOnceModal} transparent animationType="fade" onRequestClose={closeViewOnceModal}>
         <View style={styles.viewOnceOverlay}>
           <TouchableOpacity onPress={closeViewOnceModal} style={styles.viewOnceCloseBtn}>
-            <Text style={styles.viewOnceCloseText}>✕</Text>
+            <Ionicons name="close" size={26} color="#fff" />
           </TouchableOpacity>
           {viewOnceModal?.imageUrl ? (
             <Image source={{ uri: viewOnceModal.imageUrl }} style={styles.viewOnceImage} resizeMode="contain" />
@@ -869,7 +878,7 @@ const styles = StyleSheet.create({
     marginRight: spacing.sm,
     minHeight: 44,
   },
-  attachBtn: { padding: spacing.xs, transform: [{ rotate: "-30deg" }] },
+  attachBtn: { padding: spacing.xs },
   cameraBtn: { padding: spacing.xs },
   attachBtnText: { fontSize: 20 },
   input: {

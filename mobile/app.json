@@ -46,7 +46,7 @@
         }
       ],
       [
-        "react-native-webrtc",
+        "@config-plugins/react-native-webrtc",
         {
           "cameraPermission": "Used for video calls.",
           "microphonePermission": "Used for voice and video calls."
