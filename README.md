@@ -34,11 +34,11 @@ The monorepo has three parts: a **mobile app**, a **realtime backend**, and a **
 |:---:|:---:|:---:|
 | <img src="docs/screenshots/01-calculator.png" width="220"> | <img src="docs/screenshots/02-login.png" width="220"> | <img src="docs/screenshots/03-chat-list.png" width="220"> |
 
-| 1-to-1 chat | Group chat | Voice / video call |
+| 1-to-1 chat |
 |:---:|:---:|:---:|
 | <img src="docs/screenshots/04-chat.png" width="220"> |
 
-| Pair with a contact | Profile & secret codes | Decoy chat list |
+| Decoy chat list |
 |:---:|:---:|:---:|
 | | <img src="docs/screenshots/09-decoy.png" width="220"> |
 
