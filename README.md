@@ -31,15 +31,15 @@ The monorepo has three parts: a **mobile app**, a **realtime backend**, and a **
 ### 📱 Mobile app
 
 | Calculator (disguise) | Login | Chat list |
-|:---:|:---:|:---:|
+
 | <img src="docs/screenshots/01-calculator.png" width="220"> | <img src="docs/screenshots/02-login.png" width="220"> | <img src="docs/screenshots/03-chat-list.png" width="220"> |
 
 |  chat |
-|:---:|:---:|:---:|
+
 | <img src="docs/screenshots/04-chat.png" width="220"> |
 
 | Decoy chat list |
-|:---:|:---:|:---:|
+
 | | <img src="docs/screenshots/09-decoy.png" width="220"> |
 
 
