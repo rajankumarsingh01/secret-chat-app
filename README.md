@@ -42,11 +42,7 @@ The monorepo has three parts: a **mobile app**, a **realtime backend**, and a **
 |:---:|:---:|:---:|
 | | <img src="docs/screenshots/09-decoy.png" width="220"> |
 
-### 🖥️ Admin panel
 
-| Admin login | Dashboard |
-|:---:|:---:|
-| <img src="docs/screenshots/10-admin-login.png" width="420"> | <img src="docs/screenshots/11-admin-dashboard.png" width="420"> |
 
 ## 🚀 Features
 
